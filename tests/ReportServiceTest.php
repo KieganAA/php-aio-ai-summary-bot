@@ -6,6 +6,8 @@ use Src\Service\ReportService;
 use Src\Repository\MessageRepositoryInterface;
 use Src\Service\DeepseekService;
 use Src\Service\TelegramService;
+use Src\Service\SlackService;
+use Src\Service\NotionService;
 
 class ReportServiceTest extends TestCase
 {
@@ -14,6 +16,8 @@ class ReportServiceTest extends TestCase
         $repo = $this->createMock(MessageRepositoryInterface::class);
         $deepseek = $this->createMock(DeepseekService::class);
         $telegram = $this->createMock(TelegramService::class);
+        $slack = $this->createMock(SlackService::class);
+        $notion = $this->createMock(NotionService::class);
 
         $day = strtotime('2025-07-31');
 
@@ -46,7 +50,13 @@ class ReportServiceTest extends TestCase
             ->method('markProcessed')
             ->with(1, $day);
 
-        $service = new ReportService($repo, $deepseek, $telegram, 99);
+        $slack->expects($this->once())
+            ->method('sendMessage');
+
+        $notion->expects($this->once())
+            ->method('addReport');
+
+        $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion);
         $service->runDailyReports($day);
     }
 
@@ -55,6 +65,8 @@ class ReportServiceTest extends TestCase
         $repo = $this->createMock(MessageRepositoryInterface::class);
         $deepseek = $this->createMock(DeepseekService::class);
         $telegram = $this->createMock(TelegramService::class);
+        $slack = $this->createMock(SlackService::class);
+        $notion = $this->createMock(NotionService::class);
 
         $day = strtotime('2025-07-31');
 
@@ -70,9 +82,11 @@ class ReportServiceTest extends TestCase
 
         $deepseek->expects($this->never())->method('summarize');
         $telegram->expects($this->never())->method('sendMessage');
+        $slack->expects($this->never())->method('sendMessage');
+        $notion->expects($this->never())->method('addReport');
         $repo->expects($this->never())->method('markProcessed');
 
-        $service = new ReportService($repo, $deepseek, $telegram, 99);
+        $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion);
         $service->runDailyReports($day);
     }
 }

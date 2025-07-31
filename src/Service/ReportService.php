@@ -7,6 +7,8 @@ use Src\Repository\MessageRepositoryInterface;
 use Src\Service\LoggerService;
 use Psr\Log\LoggerInterface;
 use Src\Util\TextUtils;
+use Src\Service\SlackService;
+use Src\Service\NotionService;
 
 class ReportService
 {
@@ -16,7 +18,9 @@ class ReportService
         private MessageRepositoryInterface $repo,
         private DeepseekService            $deepseek,
         private TelegramService            $telegram,
-        private int                        $summaryChatId
+        private int                        $summaryChatId,
+        private ?SlackService              $slack = null,
+        private ?NotionService             $notion = null,
     ) {
         $this->logger = LoggerService::getLogger();
     }
@@ -34,7 +38,15 @@ class ReportService
 
             $summary = $this->deepseek->summarize($transcript);
             $header = "*Report for chat* `{$chatId}`\n_" . date('Y-m-d', $dayTs) . "_\n\n";
-            $this->telegram->sendMessage($this->summaryChatId, $header . $summary);
+            $reportText = $header . $summary;
+            $this->telegram->sendMessage($this->summaryChatId, $reportText);
+            if ($this->slack !== null) {
+                $this->slack->sendMessage(strip_tags($reportText));
+            }
+            if ($this->notion !== null) {
+                $title = 'Report ' . date('Y-m-d', $dayTs) . ' #' . $chatId;
+                $this->notion->addReport($title, strip_tags($summary));
+            }
             $this->logger->info('Daily report sent', ['chat_id' => $chatId]);
             $this->repo->markProcessed($chatId, $dayTs);
         }
