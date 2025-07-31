@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// Increase memory limit for daily summarization process
+ini_set('memory_limit', '256M');
+
 use Src\Config\Config;
 use Src\Repository\MySQLMessageRepository;
 use Src\Service\DeepseekService;
