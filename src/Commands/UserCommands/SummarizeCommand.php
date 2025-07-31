@@ -8,9 +8,9 @@ use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
 use Src\Config\Config;
-use Src\Repository\MySQLMessageRepository;
+use Src\Repository\DbalMessageRepository;
 use Src\Service\LoggerService;
-use Src\Util\DbConnection;
+use Src\Service\Database;
 use Src\Util\TextUtils;
 
 class SummarizeCommand extends UserCommand
@@ -31,7 +31,8 @@ class SummarizeCommand extends UserCommand
     {
         $chatId = $this->getMessage()->getChat()->getId();
         $this->logger->info('Summarize command triggered', ['chat_id' => $chatId]);
-        $repo = new MySQLMessageRepository(DbConnection::get(), $this->logger);
+        $conn = Database::getConnection($this->logger);
+        $repo = new DbalMessageRepository($conn, $this->logger);
         $todayTs = time();
 
         $msgs = $repo->getMessagesForChat($chatId, $todayTs);

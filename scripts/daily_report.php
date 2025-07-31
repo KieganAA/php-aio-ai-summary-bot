@@ -7,18 +7,19 @@ require __DIR__ . '/../vendor/autoload.php';
 ini_set('memory_limit', '256M');
 
 use Src\Config\Config;
-use Src\Repository\MySQLMessageRepository;
+use Src\Repository\DbalMessageRepository;
 use Src\Service\DeepseekService;
 use Src\Service\ReportService;
 use Src\Service\TelegramService;
 use Src\Service\LoggerService;
-use Src\Util\DbConnection;
+use Src\Service\Database;
 
 Config::load(__DIR__ . '/..');
 $logger = LoggerService::getLogger();
 date_default_timezone_set('Europe/Moscow');
 
-$repo = new MySQLMessageRepository(DbConnection::get(), $logger);
+$conn = Database::getConnection($logger);
+$repo = new DbalMessageRepository($conn, $logger);
 $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
 $telegram = new TelegramService();
 $logger->info('Daily report script started');
