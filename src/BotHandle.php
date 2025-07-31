@@ -28,6 +28,5 @@ class BotHandle
         $telegram->addCommandsPath(__DIR__ . '/Commands/UserCommands');
 
         $telegram->handle();
-        $logger->info('Bot handled request');
     }
 }
