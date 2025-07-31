@@ -7,11 +7,11 @@ use DeepSeek\DeepSeekClient;
 
 class DeepseekService
 {
-    private DeepseekClient $client;
+    private DeepSeekClient $client;
 
     public function __construct(string $apiKey)
     {
-        $this->client = DeepseekClient::build($apiKey);
+        $this->client = DeepSeekClient::build($apiKey);
     }
 
     public function summarize(string $transcript): string

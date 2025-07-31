@@ -33,7 +33,7 @@ class SummarizeCommand extends UserCommand
             $raw .= "[{$m['from_user']} @ {$t}] {$m['text']}\n";
         }
 
-        $client = DeepseekClient::build(getenv('DEEPSEEK_API_KEY'));
+        $client = DeepSeekClient::build(getenv('DEEPSEEK_API_KEY'));
         $client->query(
             'Provide a concise summary focusing on tasks, issues, and decisions.',
             'system'
