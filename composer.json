@@ -23,7 +23,7 @@
   },
   "scripts": {
     "test": "phpunit",
-    "migrate": "php bin/migrate"
+    "migrate": "php bin/migrate migrations:migrate"
   },
   "config": {
     "allow-plugins": {
