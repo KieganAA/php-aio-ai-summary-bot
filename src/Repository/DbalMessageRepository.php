@@ -76,4 +76,11 @@ class DbalMessageRepository implements MessageRepositoryInterface
         $this->conn->executeStatement($sql, ['chat' => $chatId, 'start' => $start, 'end' => $end]);
         $this->logger->info('Messages marked processed', ['chat_id' => $chatId]);
     }
+
+    public function listChats(): array
+    {
+        $rows = $this->conn->fetchAllAssociative('SELECT id, title FROM chats ORDER BY id');
+        $this->logger->info('Chats fetched', ['count' => count($rows)]);
+        return $rows;
+    }
 }

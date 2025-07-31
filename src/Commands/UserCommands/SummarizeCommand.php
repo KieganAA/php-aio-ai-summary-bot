@@ -7,6 +7,7 @@ use DeepSeek\DeepSeekClient;
 use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
+use Longman\TelegramBot\Entities\Keyboard;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\LoggerService;
@@ -33,15 +34,37 @@ class SummarizeCommand extends UserCommand
         $this->logger->info('Summarize command triggered', ['chat_id' => $chatId]);
         $conn = Database::getConnection($this->logger);
         $repo = new DbalMessageRepository($conn, $this->logger);
-        $todayTs = time();
 
-        $msgs = $repo->getMessagesForChat($chatId, $todayTs);
+        $params = trim($this->getMessage()->getText(true));
+        if ($params === '') {
+            $buttons = [];
+            foreach ($repo->listChats() as $chat) {
+                $label = trim(($chat['title'] ?? '') . ' (' . $chat['id'] . ')');
+                $buttons[] = [$label];
+            }
+            $keyboard = new Keyboard([
+                'keyboard' => $buttons,
+                'resize_keyboard' => true,
+                'one_time_keyboard' => true,
+            ]);
+            return $this->replyToChat('Send /summarize <chat_id> [YYYY-MM-DD]', [
+                'reply_markup' => $keyboard,
+            ]);
+        }
+
+        [$targetId, $dateStr] = array_pad(explode(' ', $params, 2), 2, '');
+        $targetId = (int)$targetId;
+        $dayTs = $dateStr !== '' ? strtotime($dateStr) : time();
+        if ($dayTs === false) {
+            return $this->replyToChat('Invalid date format, use YYYY-MM-DD');
+        }
+
+        $msgs = $repo->getMessagesForChat($targetId, $dayTs);
         if (empty($msgs)) {
             return $this->replyToChat('No messages to summarize yet.');
         }
 
         $raw = TextUtils::buildTranscript($msgs);
-
         $client = DeepSeekClient::build(Config::get('DEEPSEEK_API_KEY'));
         $client->query(
             'Provide a concise summary focusing on tasks, issues, and decisions.',
@@ -49,10 +72,11 @@ class SummarizeCommand extends UserCommand
         );
         $client->query($raw, 'user');
         $summary = $client->run();
-        $this->logger->info('Summary generated', ['chat_id' => $chatId]);
+        $this->logger->info('Summary generated', ['chat_id' => $targetId]);
 
-        $repo->markProcessed($chatId, $todayTs);
-        $this->logger->info('Messages marked processed after summarize', ['chat_id' => $chatId]);
+        $repo->markProcessed($targetId, $dayTs);
+        $this->logger->info('Messages marked processed after summarize', ['chat_id' => $targetId]);
+
         $response = Request::sendMessage([
             'chat_id' => $chatId,
             'text' => "*Chat Summary:*\n" . TextUtils::escapeMarkdown($summary),

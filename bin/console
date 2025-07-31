@@ -24,7 +24,9 @@ $conn = Database::getConnection($logger);
 $repo = new DbalMessageRepository($conn, $logger);
 $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
 $telegram = new TelegramService();
-$report = new ReportService($repo, $deepseek, $telegram, (int)Config::get('SUMMARY_CHAT_ID'));
+$slack = new \Src\Service\SlackService(Config::get('SLACK_WEBHOOK_URL'));
+$notion = new \Src\Service\NotionService(Config::get('NOTION_TOKEN'), Config::get('NOTION_DATABASE_ID'));
+$report = new ReportService($repo, $deepseek, $telegram, (int)Config::get('SUMMARY_CHAT_ID'), $slack, $notion);
 
 $application = new Application();
 $application->add(new DailyReportCommand($report, $logger));
