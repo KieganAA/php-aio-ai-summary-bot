@@ -15,7 +15,8 @@ class MySQLMessageRepository implements MessageRepositoryInterface
 
     public function __construct()
     {
-        Config::load(__DIR__ . '/..');
+        // Load configuration from the project root rather than src/Repository
+        Config::load(dirname(__DIR__, 2));
 
         $dsn = sprintf(
             'mysql:host=%s;dbname=%s;charset=utf8mb4',
