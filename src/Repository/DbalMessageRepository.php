@@ -68,6 +68,16 @@ class DbalMessageRepository implements MessageRepositoryInterface
         return $rows;
     }
 
+    public function getAllMessagesForChat(int $chatId, int $dayTs): array
+    {
+        $start = strtotime('midnight', $dayTs);
+        $end = $start + 86400 - 1;
+        $sql = 'SELECT from_user, message_date, text FROM messages WHERE chat_id = :chat AND message_date BETWEEN :start AND :end ORDER BY message_date';
+        $rows = $this->conn->fetchAllAssociative($sql, ['chat' => $chatId, 'start' => $start, 'end' => $end]);
+        $this->logger->info('All messages fetched', ['chat_id' => $chatId, 'count' => count($rows)]);
+        return $rows;
+    }
+
     public function markProcessed(int $chatId, int $dayTs): void
     {
         $start = strtotime('midnight', $dayTs);

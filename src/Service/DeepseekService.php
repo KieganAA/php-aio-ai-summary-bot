@@ -21,6 +21,11 @@ class DeepseekService
             'system'
         );
         $this->client->query($transcript, 'user');
-        return $this->client->run();
+        $raw = $this->client->run();
+        $data = json_decode($raw, true);
+        if (isset($data['choices'][0]['message']['content'])) {
+            return trim($data['choices'][0]['message']['content']);
+        }
+        return $raw;
     }
 }
