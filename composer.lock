@@ -4,7 +4,7 @@
     "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
     "This file is @generated automatically"
   ],
-  "content-hash": "f3ce706649a5c94b828cb5e4cc0964be",
+  "content-hash": "56b2973886e3d5cb29ab4271a84630e3",
   "packages": [
     {
       "name": "deepseek-php/deepseek-php-client",

@@ -2,22 +2,27 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\Console\Tester\CommandTester;
-use Src\Command\DailyReportCommand;
+use Psr\Log\NullLogger;
+use Src\Console\DailyReportCommand;
 use Src\Service\ReportService;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Tester\CommandTester;
 
 class DailyReportCommandTest extends TestCase
 {
-    public function testCommandRunsReportService(): void
+    public function testRunsReportService(): void
     {
-        $service = $this->createMock(ReportService::class);
-        $service->expects($this->once())
-            ->method('runDailyReports');
+        $report = $this->createMock(ReportService::class);
+        $report->expects($this->once())
+            ->method('runDailyReports')
+            ->with($this->isType('int'));
 
-        $command = new DailyReportCommand($service);
-        $tester = new CommandTester($command);
-        $status = $tester->execute([]);
+        $command = new DailyReportCommand($report, new NullLogger());
+        $application = new Application();
+        $application->add($command);
 
-        $this->assertSame(0, $status);
+        $tester = new CommandTester($application->find('app:daily-report'));
+        $tester->execute([]);
+        $tester->assertCommandIsSuccessful();
     }
 }
