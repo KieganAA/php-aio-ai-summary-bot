@@ -21,9 +21,9 @@ class MySQLMessageRepository implements MessageRepositoryInterface
     {
         $sql = <<<'SQL'
 INSERT INTO messages
-  (chat_id, message_id, from_user, message_date, text)
+  (chat_id, chat_title, message_id, from_user, message_date, text, attachments)
 VALUES
-  (:chat, :mid, :user, :dt, :text)
+  (:chat, :title, :mid, :user, :dt, :text, :attach)
 ON DUPLICATE KEY UPDATE
   chat_id = chat_id
 SQL;
@@ -31,10 +31,12 @@ SQL;
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':chat' => $chatId,
-            ':mid' => $message['message_id'],
-            ':user' => $message['from']['username'] ?? '',
-            ':dt' => $message['date'],
-            ':text' => $message['text'] ?? '',
+            ':mid'   => $message['message_id'],
+            ':title' => $message['chat_title'] ?? null,
+            ':user'  => $message['from']['username'] ?? '',
+            ':dt'    => $message['date'],
+            ':text'  => $message['text'] ?? '',
+            ':attach'=> $message['attachments'] ?? null,
         ]);
         $this->logger->info('Stored message', ['chat_id' => $chatId, 'message_id' => $message['message_id']]);
     }
