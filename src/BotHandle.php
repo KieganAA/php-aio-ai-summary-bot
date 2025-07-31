@@ -6,6 +6,7 @@ namespace Src;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Telegram;
 use Src\Config\Config;
+use Src\Service\LoggerService;
 
 class BotHandle
 {
@@ -15,6 +16,8 @@ class BotHandle
     public static function run(): void
     {
         Config::load(__DIR__ . '/../');
+        $logger = LoggerService::getLogger();
+        $logger->info('Bot starting');
 
         $telegram = new Telegram(
             Config::get('TELEGRAM_BOT_TOKEN'),
@@ -25,5 +28,6 @@ class BotHandle
         $telegram->addCommandsPath(__DIR__ . '/Commands/UserCommands');
 
         $telegram->handle();
+        $logger->info('Bot handled request');
     }
 }

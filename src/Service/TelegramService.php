@@ -5,11 +5,16 @@ namespace Src\Service;
 
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
+use Psr\Log\LoggerInterface;
+use Src\Service\LoggerService;
 
 class TelegramService
 {
+    private LoggerInterface $logger;
+
     public function __construct()
-    { /* nothing */
+    {
+        $this->logger = LoggerService::getLogger();
     }
 
     public function sendMessage(int $chatId, string $text): void
@@ -20,8 +25,9 @@ class TelegramService
                 'text' => $text,
                 'parse_mode' => 'Markdown',
             ]);
+            $this->logger->info('Sent message to Telegram', ['chat_id' => $chatId]);
         } catch (TelegramException $e) {
-            error_log('Telegram sendMessage failed: ' . $e->getMessage());
+            $this->logger->error('Telegram sendMessage failed: ' . $e->getMessage());
         }
     }
 }
