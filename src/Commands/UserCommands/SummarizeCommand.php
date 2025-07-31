@@ -10,6 +10,8 @@ use Longman\TelegramBot\Request;
 use Src\Config\Config;
 use Src\Repository\MySQLMessageRepository;
 use Src\Service\LoggerService;
+use Src\Util\DbConnection;
+use Src\Util\TextUtils;
 
 class SummarizeCommand extends UserCommand
 {
@@ -29,7 +31,7 @@ class SummarizeCommand extends UserCommand
     {
         $chatId = $this->getMessage()->getChat()->getId();
         $this->logger->info('Summarize command triggered', ['chat_id' => $chatId]);
-        $repo = new MySQLMessageRepository();
+        $repo = new MySQLMessageRepository(DbConnection::get(), $this->logger);
         $todayTs = time();
 
         $msgs = $repo->getMessagesForChat($chatId, $todayTs);
@@ -37,13 +39,9 @@ class SummarizeCommand extends UserCommand
             return $this->replyToChat('No messages to summarize yet.');
         }
 
-        $raw = '';
-        foreach ($msgs as $m) {
-            $t = date('H:i', $m['message_date']);
-            $raw .= "[{$m['from_user']} @ {$t}] {$m['text']}\n";
-        }
+        $raw = TextUtils::buildTranscript($msgs);
 
-        $client = DeepSeekClient::build(config::get('DEEPSEEK_API_KEY'));
+        $client = DeepSeekClient::build(Config::get('DEEPSEEK_API_KEY'));
         $client->query(
             'Provide a concise summary focusing on tasks, issues, and decisions.',
             'system'
@@ -56,8 +54,8 @@ class SummarizeCommand extends UserCommand
         $this->logger->info('Messages marked processed after summarize', ['chat_id' => $chatId]);
         $response = Request::sendMessage([
             'chat_id' => $chatId,
-            'text' => "*Chat Summary:*\n{$summary}",
-            'parse_mode' => 'Markdown',
+            'text' => "*Chat Summary:*\n" . TextUtils::escapeMarkdown($summary),
+            'parse_mode' => 'MarkdownV2',
         ]);
         $this->logger->info('Summary sent to chat', ['chat_id' => $chatId]);
         return $response;

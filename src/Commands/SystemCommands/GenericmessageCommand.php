@@ -8,6 +8,7 @@ use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
 use Src\Repository\MySQLMessageRepository;
 use Src\Service\LoggerService;
+use Src\Util\DbConnection;
 
 class GenericmessageCommand extends SystemCommand
 {
@@ -37,7 +38,8 @@ class GenericmessageCommand extends SystemCommand
             'text' => $text,
         ]);
 
-        (new MySQLMessageRepository())->add(
+        $repo = new MySQLMessageRepository(DbConnection::get(), $this->logger);
+        $repo->add(
             $message->getChat()->getId(),
             [
                 'message_id' => $message->getMessageId(),

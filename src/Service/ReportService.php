@@ -5,10 +5,12 @@ namespace Src\Service;
 
 use Src\Repository\MessageRepositoryInterface;
 use Src\Service\LoggerService;
+use Psr\Log\LoggerInterface;
+use Src\Util\TextUtils;
 
 class ReportService
 {
-    private LoggerService $logger;
+    private LoggerInterface $logger;
 
     public function __construct(
         private MessageRepositoryInterface $repo,
@@ -28,11 +30,7 @@ class ReportService
                 continue;
             }
 
-            $transcript = '';
-            foreach ($msgs as $m) {
-                $t = date('H:i', $m['message_date']);
-                $transcript .= "[{$m['from_user']} @ {$t}] {$m['text']}\n";
-            }
+            $transcript = \Src\Util\TextUtils::buildTranscript($msgs);
 
             $summary = $this->deepseek->summarize($transcript);
             $header = "*Report for chat* `{$chatId}`\n_" . date('Y-m-d', $dayTs) . "_\n\n";

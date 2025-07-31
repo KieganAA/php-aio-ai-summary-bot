@@ -12,12 +12,13 @@ use Src\Service\DeepseekService;
 use Src\Service\ReportService;
 use Src\Service\TelegramService;
 use Src\Service\LoggerService;
+use Src\Util\DbConnection;
 
 Config::load(__DIR__ . '/..');
 $logger = LoggerService::getLogger();
 date_default_timezone_set('Europe/Moscow');
 
-$repo = new MySQLMessageRepository();
+$repo = new MySQLMessageRepository(DbConnection::get(), $logger);
 $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
 $telegram = new TelegramService();
 $logger->info('Daily report script started');

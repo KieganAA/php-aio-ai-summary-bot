@@ -10,12 +10,13 @@ use Monolog\LogRecord;
 class TelegramLogHandler extends AbstractProcessingHandler
 {
     private TelegramService $telegram;
-    private int $chatId = -1002671594630;
+    private int $chatId;
 
-    public function __construct(int $level = Logger::INFO, bool $bubble = true)
+    public function __construct(int $chatId, int $level = Logger::INFO, bool $bubble = true)
     {
         parent::__construct($level, $bubble);
         $this->telegram = new TelegramService();
+        $this->chatId = $chatId;
     }
 
     protected function write(LogRecord $record): void
