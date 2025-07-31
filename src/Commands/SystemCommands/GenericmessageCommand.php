@@ -6,9 +6,9 @@ namespace Src\Commands\SystemCommands;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
-use Src\Repository\MySQLMessageRepository;
+use Src\Repository\DbalMessageRepository;
 use Src\Service\LoggerService;
-use Src\Util\DbConnection;
+use Src\Service\Database;
 use Src\Logger\MessageLogger;
 
 class GenericmessageCommand extends SystemCommand
@@ -28,7 +28,8 @@ class GenericmessageCommand extends SystemCommand
     {
         $update = $this->getUpdate();
 
-        $repo   = new MySQLMessageRepository(DbConnection::get(), $this->logger);
+        $conn = Database::getConnection($this->logger);
+        $repo   = new DbalMessageRepository($conn, $this->logger);
         $logger = new MessageLogger($repo);
         $logger->handleUpdate($update);
 
