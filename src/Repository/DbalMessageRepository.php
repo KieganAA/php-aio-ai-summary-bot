@@ -16,11 +16,14 @@ class DbalMessageRepository implements MessageRepositoryInterface
     {
         $this->conn->beginTransaction();
         try {
-            $this->conn->executeStatement(
-                'INSERT INTO chats (id, title) VALUES (:id, :title)
-                 ON CONFLICT(id) DO UPDATE SET title=excluded.title',
-                ['id' => $chatId, 'title' => $message['chat_title'] ?? null]
-            );
+            try {
+                $this->conn->insert('chats', [
+                    'id'    => $chatId,
+                    'title' => $message['chat_title'] ?? null,
+                ]);
+            } catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException $e) {
+                $this->conn->update('chats', ['title' => $message['chat_title'] ?? null], ['id' => $chatId]);
+            }
 
             try {
                 $this->conn->insert('messages', [
