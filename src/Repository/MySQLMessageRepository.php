@@ -5,6 +5,7 @@ namespace Src\Repository;
 
 use PDO;
 use Psr\Log\LoggerInterface;
+use Src\Config\Config;
 use Src\Service\LoggerService;
 
 class MySQLMessageRepository implements MessageRepositoryInterface
@@ -14,15 +15,17 @@ class MySQLMessageRepository implements MessageRepositoryInterface
 
     public function __construct()
     {
+        Config::load(__DIR__ . '/..');
+
         $dsn = sprintf(
             'mysql:host=%s;dbname=%s;charset=utf8mb4',
-            getenv('DB_HOST'),
-            getenv('DB_NAME')
+            config::get('DB_HOST'),
+            config::get('DB_NAME')
         );
         $this->pdo = new PDO(
             $dsn,
-            getenv('DB_USER'),
-            getenv('DB_PASS'),
+            config::get('DB_USER'),
+            config::get('DB_PASS'),
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
         );
         $this->logger = LoggerService::getLogger();

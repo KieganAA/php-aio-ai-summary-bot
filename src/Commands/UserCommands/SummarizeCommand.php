@@ -7,6 +7,7 @@ use DeepSeek\DeepSeekClient;
 use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
+use Src\Config\Config;
 use Src\Repository\MySQLMessageRepository;
 use Src\Service\LoggerService;
 
@@ -42,7 +43,7 @@ class SummarizeCommand extends UserCommand
             $raw .= "[{$m['from_user']} @ {$t}] {$m['text']}\n";
         }
 
-        $client = DeepSeekClient::build(getenv('DEEPSEEK_API_KEY'));
+        $client = DeepSeekClient::build(config::get('DEEPSEEK_API_KEY'));
         $client->query(
             'Provide a concise summary focusing on tasks, issues, and decisions.',
             'system'

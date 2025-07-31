@@ -25,12 +25,18 @@ class GenericmessageCommand extends SystemCommand
     public function execute(): ServerResponse
     {
         $message = $this->getMessage();
-        if (!$message->hasText()) {
-            // ignore non‑text
+        $text = $message->getText();
+
+        if ($text === null) {
+            // ignore non-text (photo captions, stickers, etc.)
             return Request::emptyResponse();
         }
 
-        $this->logger->info('Incoming message', ['chat_id' => $message->getChat()->getId()]);
+        $this->logger->info('Incoming text message', [
+            'chat_id' => $message->getChat()->getId(),
+            'text' => $text,
+        ]);
+
         (new MySQLMessageRepository())->add(
             $message->getChat()->getId(),
             [
