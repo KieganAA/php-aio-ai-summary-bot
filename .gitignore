@@ -3,3 +3,4 @@
 .env
 Makefile
 logs/
+.phpunit.result.cache

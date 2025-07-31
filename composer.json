@@ -21,7 +21,8 @@
     "phpunit/phpunit": "^9.0"
   },
   "scripts": {
-    "test": "phpunit"
+    "test": "phpunit",
+    "migrate": "php bin/migrate"
   },
   "config": {
     "allow-plugins": {
