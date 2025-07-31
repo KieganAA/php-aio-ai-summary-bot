@@ -9,6 +9,7 @@ use Longman\TelegramBot\Request;
 use Src\Repository\MySQLMessageRepository;
 use Src\Service\LoggerService;
 use Src\Util\DbConnection;
+use Src\Logger\MessageLogger;
 
 class GenericmessageCommand extends SystemCommand
 {
@@ -25,32 +26,11 @@ class GenericmessageCommand extends SystemCommand
 
     public function execute(): ServerResponse
     {
-        $message = $this->getMessage();
-        $text = $message->getText();
+        $update = $this->getUpdate();
 
-        if ($text === null) {
-            // ignore non-text (photo captions, stickers, etc.)
-            return Request::emptyResponse();
-        }
-
-        $this->logger->info('Incoming text message', [
-            'chat_id' => $message->getChat()->getId(),
-            'text' => $text,
-        ]);
-
-        $repo = new MySQLMessageRepository(DbConnection::get(), $this->logger);
-        $repo->add(
-            $message->getChat()->getId(),
-            [
-                'message_id' => $message->getMessageId(),
-                'date' => $message->getDate(),
-                'from' => [
-                    'username' => $message->getFrom()->getUsername() ?? '',
-                    'id' => $message->getFrom()->getId(),
-                ],
-                'text' => $message->getText(),
-            ]
-        );
+        $repo   = new MySQLMessageRepository(DbConnection::get(), $this->logger);
+        $logger = new MessageLogger($repo);
+        $logger->handleUpdate($update);
 
         return Request::emptyResponse();
     }
