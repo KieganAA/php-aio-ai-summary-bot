@@ -17,3 +17,8 @@ You may also run the script directly:
 ```bash
 php bin/migrate -- [doctrine options]
 ```
+
+## Features
+
+- `/summarize` now shows a keyboard with all known chats and accepts an optional date so you can request summaries for any conversation.
+- Daily reports are delivered to Telegram and also forwarded to Slack and Notion if configured.
