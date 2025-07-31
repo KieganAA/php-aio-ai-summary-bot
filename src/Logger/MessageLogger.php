@@ -5,22 +5,22 @@ namespace Src\Logger;
 
 use Longman\TelegramBot\Entities\Update;
 use Psr\Log\LoggerInterface;
-use Src\Config\Config;
 use Src\Entity\Message;
 use Src\Repository\MessageRepositoryInterface;
-use Src\Service\LoggerService;
 
 /**
  * Handles incoming Telegram updates and persists relevant messages.
  */
 class MessageLogger
 {
-    private LoggerInterface $logger;
+    private string $chatPattern;
 
     public function __construct(
-        private MessageRepositoryInterface $repository
+        private MessageRepositoryInterface $repository,
+        private LoggerInterface $logger,
+        string $chatPattern = '/AIO/i'
     ) {
-        $this->logger = LoggerService::getLogger();
+        $this->chatPattern = $chatPattern;
     }
 
     /**
@@ -33,10 +33,10 @@ class MessageLogger
             return; // ignore non-message updates
         }
 
-        $chat = $message->getChat();
+        $chat  = $message->getChat();
         $title = $chat->getTitle();
-        if ($title === null || stripos($title, 'AIO') === false) {
-            // Only process chats containing "AIO" in the title
+        if ($title === null || !preg_match($this->chatPattern, $title)) {
+            // Only process chats matching the allowed pattern
             return;
         }
 

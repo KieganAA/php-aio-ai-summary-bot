@@ -22,14 +22,19 @@ class Database
     public static function getConnection(LoggerInterface $logger): Connection
     {
         if (self::$connection === null) {
-            $params = [
-                'dbname'   => Config::get('DB_NAME'),
-                'user'     => Config::get('DB_USER'),
-                'password' => Config::get('DB_PASS'),
-                'host'     => Config::get('DB_HOST'),
-                'driver'   => 'pdo_mysql',
-                'charset'  => 'utf8mb4',
-            ];
+            $url = Config::get('DATABASE_URL');
+            if ($url !== '') {
+                $params = ['url' => $url];
+            } else {
+                $params = [
+                    'dbname'   => Config::get('DB_NAME'),
+                    'user'     => Config::get('DB_USER'),
+                    'password' => Config::get('DB_PASS'),
+                    'host'     => Config::get('DB_HOST'),
+                    'driver'   => 'pdo_mysql',
+                    'charset'  => 'utf8mb4',
+                ];
+            }
             $config = new Configuration();
             $config->setSQLLogger(new class($logger) implements SQLLogger {
                 public function __construct(private LoggerInterface $logger) {}

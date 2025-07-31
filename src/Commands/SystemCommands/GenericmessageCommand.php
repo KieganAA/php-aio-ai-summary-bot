@@ -30,7 +30,7 @@ class GenericmessageCommand extends SystemCommand
 
         $conn = Database::getConnection($this->logger);
         $repo   = new DbalMessageRepository($conn, $this->logger);
-        $logger = new MessageLogger($repo);
+        $logger = new MessageLogger($repo, $this->logger);
         $logger->handleUpdate($update);
 
         return Request::emptyResponse();
