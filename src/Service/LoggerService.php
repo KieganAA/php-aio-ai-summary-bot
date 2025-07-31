@@ -15,10 +15,13 @@ class LoggerService
     {
         if (self::$logger === null) {
             $logger = new Logger('bot');
+            // Set the static instance before adding handlers to avoid
+            // recursive calls when handlers depend on the logger.
+            self::$logger = $logger;
+
             $logFile = __DIR__ . '/../../logs/app.log';
             $logger->pushHandler(new StreamHandler($logFile, Logger::DEBUG));
             $logger->pushHandler(new TelegramLogHandler(Logger::ERROR));
-            self::$logger = $logger;
         }
         return self::$logger;
     }
