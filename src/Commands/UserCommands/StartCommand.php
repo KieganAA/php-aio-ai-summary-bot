@@ -1,8 +1,7 @@
 <?php
 
-namespace App\Bot\Commands;
+namespace Src\Commands\UserCommands;
 
-use App\Services\DatabaseService;
 use Exception;
 use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
