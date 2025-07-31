@@ -8,13 +8,16 @@ use Src\Repository\MySQLMessageRepository;
 use Src\Service\DeepseekService;
 use Src\Service\ReportService;
 use Src\Service\TelegramService;
+use Src\Service\LoggerService;
 
 Config::load(__DIR__ . '/..');
+$logger = LoggerService::getLogger();
 date_default_timezone_set('Europe/Moscow');
 
 $repo = new MySQLMessageRepository();
 $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
 $telegram = new TelegramService();
+$logger->info('Daily report script started');
 $report = new ReportService(
     $repo,
     $deepseek,
@@ -23,3 +26,4 @@ $report = new ReportService(
 );
 
 $report->runDailyReports(time());
+$logger->info('Daily report script finished');

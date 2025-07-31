@@ -4,10 +4,13 @@ declare(strict_types=1);
 namespace Src\Repository;
 
 use PDO;
+use Psr\Log\LoggerInterface;
+use Src\Service\LoggerService;
 
 class MySQLMessageRepository implements MessageRepositoryInterface
 {
     private PDO $pdo;
+    private LoggerInterface $logger;
 
     public function __construct()
     {
@@ -22,6 +25,7 @@ class MySQLMessageRepository implements MessageRepositoryInterface
             getenv('DB_PASS'),
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
         );
+        $this->logger = LoggerService::getLogger();
     }
 
     public function add(int $chatId, array $message): void
@@ -43,6 +47,7 @@ SQL;
             ':dt' => $message['date'],
             ':text' => $message['text'] ?? '',
         ]);
+        $this->logger->info('Stored message', ['chat_id' => $chatId, 'message_id' => $message['message_id']]);
     }
 
     public function listActiveChats(int $dayTs): array
@@ -57,7 +62,9 @@ SELECT DISTINCT chat_id
 SQL
         );
         $stmt->execute([':start' => $start, ':end' => $end]);
-        return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'chat_id');
+        $chats = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'chat_id');
+        $this->logger->info('Active chats fetched', ['count' => count($chats)]);
+        return $chats;
     }
 
     public function getMessagesForChat(int $chatId, int $dayTs): array
@@ -74,7 +81,9 @@ SELECT from_user, message_date, text
 SQL
         );
         $stmt->execute([':chat' => $chatId, ':start' => $start, ':end' => $end]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $msgs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $this->logger->info('Messages fetched', ['chat_id' => $chatId, 'count' => count($msgs)]);
+        return $msgs;
     }
 
     public function markProcessed(int $chatId, int $dayTs): void
@@ -90,5 +99,6 @@ UPDATE messages
 SQL
         );
         $stmt->execute([':chat' => $chatId, ':start' => $start, ':end' => $end]);
+        $this->logger->info('Messages marked processed', ['chat_id' => $chatId]);
     }
 }

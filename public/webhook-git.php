@@ -1,8 +1,10 @@
 <?php
 
 use Src\Config\Config;
+use Src\Service\LoggerService;
 
 Config::load(__DIR__ . '/../');
+$logger = LoggerService::getLogger();
 
 
 $secret = Config::get('GIT_SECRET');
@@ -20,7 +22,7 @@ $status = null;
 exec("cd /var/www/bot && git pull origin main && composer install 2>&1", $output, $status);
 
 if ($status !== 0) {
-    error_log("Git pull or composer install failed. Command output: " . implode("\n", $output));
+    $logger->error("Git pull or composer install failed. Command output: " . implode("\n", $output));
     http_response_code(500);
     exit("Git pull or composer install failed");
 }
