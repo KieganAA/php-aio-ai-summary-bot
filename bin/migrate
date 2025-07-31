@@ -1,0 +1,15 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Src\Config\Config;
+
+Config::load(__DIR__ . '/..');
+
+$cmd = __DIR__ . '/../vendor/bin/doctrine-migrations';
+$args = array_slice($argv, 1);
+$command = $cmd . (count($args) ? ' ' . implode(' ', array_map('escapeshellarg', $args)) : '');
+passthru($command, $code);
+exit($code);
