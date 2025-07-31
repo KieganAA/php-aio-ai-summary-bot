@@ -7,6 +7,7 @@ use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
+use Src\Service\LoggerService;
 
 /**
  * Class StartCommand
@@ -19,6 +20,13 @@ class StartCommand extends UserCommand
     protected $description = 'Start command';
     protected $usage = '/start';
     protected $version = '1.0.0';
+    private $logger;
+
+    public function __construct(...$args)
+    {
+        parent::__construct(...$args);
+        $this->logger = \Src\Service\LoggerService::getLogger();
+    }
 
     /**
      * Execute the command.
@@ -28,12 +36,8 @@ class StartCommand extends UserCommand
      */
     public function execute(): ServerResponse
     {
-        $message = $this->getMessage();
-        $chat = $message->getChat();
-        $chatId = $message->getChat()->getId();
-        $user = $message->getFrom();
-
-        $text = 'Hey';
+        $chatId = $this->getMessage()->getChat()->getId();
+        $text   = 'Hey';
 
         try {
             return Request::sendMessage([
@@ -42,11 +46,8 @@ class StartCommand extends UserCommand
                 'parse_mode' => 'Markdown',
             ]);
         } catch (Exception $e) {
-            return Request::sendMessage([
-                'chat_id' => $chatId,
-                'text' => $text,
-                'parse_mode' => 'Markdown',
-            ]);
+            $this->logger->error('Start command failed: ' . $e->getMessage());
+            return Request::emptyResponse();
         }
     }
 }

@@ -1,10 +1,16 @@
 <?php
+require __DIR__ . '/../vendor/autoload.php';
 
 use Src\Config\Config;
 use Src\Service\LoggerService;
 
 Config::load(__DIR__ . '/../');
 $logger = LoggerService::getLogger();
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    exit('Method Not Allowed');
+}
 
 
 $secret = Config::get('GIT_SECRET');

@@ -6,6 +6,7 @@ namespace Src\Service;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
+use Src\Config\Config;
 
 class LoggerService
 {
@@ -20,8 +21,15 @@ class LoggerService
             self::$logger = $logger;
 
             $logFile = __DIR__ . '/../../logs/app.log';
+            $logDir  = dirname($logFile);
+            if (!is_dir($logDir)) {
+                mkdir($logDir, 0777, true);
+            }
+
             $logger->pushHandler(new StreamHandler($logFile, Logger::DEBUG));
-            $logger->pushHandler(new TelegramLogHandler(Logger::ERROR));
+            $chatIdEnv = Config::get('LOG_CHAT_ID');
+            $chatId = $chatIdEnv !== '' ? (int)$chatIdEnv : -1002671594630;
+            $logger->pushHandler(new TelegramLogHandler($chatId, Logger::ERROR));
         }
         return self::$logger;
     }

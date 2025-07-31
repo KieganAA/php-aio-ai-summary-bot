@@ -5,30 +5,16 @@ namespace Src\Repository;
 
 use PDO;
 use Psr\Log\LoggerInterface;
-use Src\Config\Config;
-use Src\Service\LoggerService;
 
 class MySQLMessageRepository implements MessageRepositoryInterface
 {
     private PDO $pdo;
     private LoggerInterface $logger;
 
-    public function __construct()
+    public function __construct(PDO $pdo, LoggerInterface $logger)
     {
-        Config::load(dirname(__DIR__, 2));
-
-        $dsn = sprintf(
-            'mysql:host=%s;dbname=%s;charset=utf8mb4',
-            config::get('DB_HOST'),
-            config::get('DB_NAME')
-        );
-        $this->pdo = new PDO(
-            $dsn,
-            config::get('DB_USER'),
-            config::get('DB_PASS'),
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-        );
-        $this->logger = LoggerService::getLogger();
+        $this->pdo = $pdo;
+        $this->logger = $logger;
     }
 
     public function add(int $chatId, array $message): void
