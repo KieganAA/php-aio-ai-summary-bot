@@ -17,7 +17,8 @@ class TextUtils
 
     public static function escapeMarkdown(string $text): string
     {
-        $special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+        // Do not escape '-' or '.' to allow proper Markdown bullet and numbered lists
+        $special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '=', '|', '{', '}', '!'];
         foreach ($special as $char) {
             $text = str_replace($char, '\\' . $char, $text);
         }
