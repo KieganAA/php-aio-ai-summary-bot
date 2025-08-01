@@ -281,6 +281,9 @@ PROMPT;
             ['emoji' => '💬', 'title' => 'Темы', 'key' => 'topics'],
             ['emoji' => '⚠️', 'title' => 'Проблемы', 'key' => 'issues'],
             ['emoji' => '✅', 'title' => 'Решения', 'key' => 'decisions'],
+            ['emoji' => '📌', 'title' => 'Действия', 'key' => 'actions'],
+            ['emoji' => '⛔', 'title' => 'Блокеры', 'key' => 'blockers'],
+            ['emoji' => '❓', 'title' => 'Вопросы', 'key' => 'questions'],
         ];
 
         $lines = [];

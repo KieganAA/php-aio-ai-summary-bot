@@ -72,8 +72,12 @@ class ForceSummarizeCommand extends UserCommand
         $dateStr  = date('Y-m-d', $dayTs);
         $summary   = $deepseek->summarize($cleaned, $chatTitle, $targetId, $dateStr);
         $json      = json_decode($summary, true);
+        if (!is_array($json) && preg_match('/{.*}/s', $summary, $m)) {
+            $json = json_decode($m[0], true);
+        }
         if (is_array($json)) {
             $summary = $deepseek->jsonToMarkdown($json, $chatTitle, $targetId, $dateStr);
+            $this->logger->info('Summary is valid JSON, decoding', ['summary' => $summary]);
         }
         $this->logger->info('Force summary generated', ['chat_id' => $targetId]);
 
