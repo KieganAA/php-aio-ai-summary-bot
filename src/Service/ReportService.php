@@ -36,7 +36,13 @@ class ReportService
 
             $transcript = \Src\Util\TextUtils::buildTranscript($msgs);
 
-            $summary = $this->deepseek->summarize($transcript);
+            $chatTitle = $this->repo->getChatTitle($chatId);
+            $summary = $this->deepseek->summarize(
+                $transcript,
+                $chatTitle,
+                $chatId,
+                date('Y-m-d', $dayTs)
+            );
             $header = "*Report for chat* `{$chatId}`\n_" . date('Y-m-d', $dayTs) . "_\n\n";
             $reportText = $header . $summary;
             $this->telegram->sendMessage($this->summaryChatId, $reportText);

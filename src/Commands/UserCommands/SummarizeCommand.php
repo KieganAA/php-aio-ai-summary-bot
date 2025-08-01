@@ -66,7 +66,8 @@ class SummarizeCommand extends UserCommand
 
         $raw = TextUtils::buildTranscript($msgs);
         $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
-        $summary = $deepseek->summarize($raw);
+        $chatTitle = $repo->getChatTitle($targetId);
+        $summary = $deepseek->summarize($raw, $chatTitle, $targetId, date('Y-m-d', $dayTs));
         $this->logger->info('Summary generated', ['chat_id' => $targetId]);
 
         $repo->markProcessed($targetId, $dayTs);
