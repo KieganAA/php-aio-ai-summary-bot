@@ -38,6 +38,43 @@ class DeepseekService
     }
 
     /**
+     * Extract the assistant content from a DeepSeek response.
+     *
+     * The API may return Server Sent Events (SSE) when streaming is enabled.
+     * In that case the body consists of many `data: {json}` lines.  This helper
+     * collects all `delta.content` chunks and concatenates them into the final
+     * message.  If the response is a normal JSON object we just return the
+     * message content as-is.
+     */
+    private function extractContent(string $raw): string
+    {
+        $data = json_decode($raw, true);
+        if (is_array($data) && isset($data['choices'][0]['message']['content'])) {
+            return (string) $data['choices'][0]['message']['content'];
+        }
+
+        $content = '';
+        foreach (preg_split("/\r\n|\n|\r/", trim($raw)) as $line) {
+            $line = trim($line);
+            if ($line === '' || !str_starts_with($line, 'data:')) {
+                continue;
+            }
+            $payload = trim(substr($line, 5));
+            if ($payload === '' || $payload === '[DONE]') {
+                continue;
+            }
+            $json = json_decode($payload, true);
+            if (isset($json['choices'][0]['delta']['content'])) {
+                $content .= $json['choices'][0]['delta']['content'];
+            } elseif (isset($json['choices'][0]['message']['content'])) {
+                $content .= $json['choices'][0]['message']['content'];
+            }
+        }
+
+        return trim($content) !== '' ? trim($content) : $raw;
+    }
+
+    /**
      * Split a transcript into ~3000 token chunks.
      */
     private function chunkTranscript(string $transcript, int $maxTokens = 3000): array
@@ -101,8 +138,7 @@ SYS;
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
         $raw = $client->run();
-        $data = json_decode($raw, true);
-        return trim($data['choices'][0]['message']['content'] ?? $raw);
+        return trim($this->extractContent($raw));
     }
 
     /**
@@ -135,8 +171,7 @@ PROMPT;
 
         $client->query($prompt, 'system');
         $raw = $client->run();
-        $data = json_decode($raw, true);
-        $content = trim($data['choices'][0]['message']['content'] ?? $raw);
+        $content = $this->extractContent($raw);
         $json = json_decode($content, true);
         if (!is_array($json)) {
             return $content;
