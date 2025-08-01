@@ -19,21 +19,21 @@ class ReportServiceTest extends TestCase
         $slack = $this->createMock(SlackService::class);
         $notion = $this->createMock(NotionService::class);
 
-        $day = strtotime('2025-07-31');
+        $run = strtotime('2025-07-31 04:00:00');
 
         $repo->expects($this->once())
             ->method('listActiveChats')
-            ->with($day)
+            ->with($run)
             ->willReturn([1]);
 
         $messages = [
-            ['from_user' => 'u', 'message_date' => $day + 3600, 'text' => 'hi'],
-            ['from_user' => 'v', 'message_date' => $day + 7200, 'text' => 'there'],
+            ['from_user' => 'u', 'message_date' => $run - 10800, 'text' => 'hi'],
+            ['from_user' => 'v', 'message_date' => $run - 7200, 'text' => 'there'],
         ];
 
         $repo->expects($this->once())
             ->method('getMessagesForChat')
-            ->with(1, $day)
+            ->with(1, $run)
             ->willReturn($messages);
 
         $repo->expects($this->once())
@@ -44,16 +44,17 @@ class ReportServiceTest extends TestCase
         $transcript = "[u @ 01:00] hi\n[v @ 02:00] there\n";
         $deepseek->expects($this->once())
             ->method('summarize')
-            ->with($transcript, 'My Chat', 1, date('Y-m-d', $day))
+            ->with($transcript, 'My Chat', 1, date('Y-m-d', $run))
             ->willReturn('summary');
+        $deepseek->expects($this->never())->method('summarizeTopic');
 
         $telegram->expects($this->once())
             ->method('sendMessage')
-            ->with(99, "*Report for chat* `1`\n_" . date('Y-m-d', $day) . "_\n\nsummary");
+            ->with(99, "*Report for chat* `1`\n_" . date('Y-m-d', $run) . "_\n\nsummary");
 
         $repo->expects($this->once())
             ->method('markProcessed')
-            ->with(1, $day);
+            ->with(1, $run);
 
         $slack->expects($this->once())
             ->method('sendMessage');
@@ -62,7 +63,58 @@ class ReportServiceTest extends TestCase
             ->method('addReport');
 
         $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion);
-        $service->runDailyReports($day);
+        $service->runDailyReports($run);
+    }
+
+    public function testMarksActiveConversation(): void
+    {
+        $repo = $this->createMock(MessageRepositoryInterface::class);
+        $deepseek = $this->createMock(DeepseekService::class);
+        $telegram = $this->createMock(TelegramService::class);
+
+        $run = strtotime('2025-07-31 02:30:00');
+
+        $repo->expects($this->once())
+            ->method('listActiveChats')
+            ->with($run)
+            ->willReturn([1]);
+
+        $messages = [
+            ['from_user' => 'u', 'message_date' => $run - 3600, 'text' => 'earlier'],
+            ['from_user' => 'v', 'message_date' => $run - 1800, 'text' => 'latest topic'],
+        ];
+
+        $repo->expects($this->once())
+            ->method('getMessagesForChat')
+            ->with(1, $run)
+            ->willReturn($messages);
+
+        $repo->expects($this->once())
+            ->method('getChatTitle')
+            ->with(1)
+            ->willReturn('My Chat');
+
+        $transcript = "[u @ 01:30] earlier\n[v @ 02:00] latest topic\n";
+        $deepseek->expects($this->once())
+            ->method('summarize')
+            ->with($transcript, 'My Chat', 1, date('Y-m-d', $run))
+            ->willReturn('summary');
+
+        $deepseek->expects($this->once())
+            ->method('summarizeTopic')
+            ->with($this->isType('string'), 'My Chat', 1)
+            ->willReturn('topic');
+
+        $telegram->expects($this->once())
+            ->method('sendMessage')
+            ->with(99, $this->stringContains('Active conversation about: topic'));
+
+        $repo->expects($this->once())
+            ->method('markProcessed')
+            ->with(1, $run);
+
+        $service = new ReportService($repo, $deepseek, $telegram, 99);
+        $service->runDailyReports($run);
     }
 
     public function testSkipsChatsWithNoMessages(): void
