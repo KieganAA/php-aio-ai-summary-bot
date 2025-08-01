@@ -23,10 +23,11 @@ class DeepseekService
     private function client(): DeepSeekClient
     {
         // Build a fresh client for every request to ensure a clean state.
-        // Enable streaming and disable timeouts so long requests do not idle out.
+        // Enable streaming and raise timeouts for long requests.
         $http = new HttpClient([
-            'base_uri' => 'https://api.deepseek.com/v3',
-            'timeout'  => 0,
+            'base_uri'        => 'https://api.deepseek.com/v3',
+            'timeout'         => 600,
+            'connect_timeout' => 30,
             'headers'  => [
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type'  => 'application/json',
@@ -39,14 +40,14 @@ class DeepseekService
     /**
      * Split a transcript into ~3000 token chunks.
      */
-    private function chunkTranscript(string $transcript): array
+    private function chunkTranscript(string $transcript, int $maxTokens = 3000): array
     {
         $messages = explode("\n", trim($transcript));
         $chunks = [];
         $current = '';
         foreach ($messages as $msg) {
             $t = TokenCounter::count($msg);
-            if (TokenCounter::count($current) + $t > 3000) {
+            if (TokenCounter::count($current) + $t > $maxTokens) {
                 $chunks[] = trim($current);
                 $current = '';
             }
@@ -156,18 +157,26 @@ PROMPT;
         string $transcript,
         string $chatTitle = '',
         int $chatId = 0,
-        ?string $date = null
+        ?string $date = null,
+        int $maxTokens = 3000
     ): string {
         $date ??= date('Y-m-d');
 
-        $chunks = $this->chunkTranscript($transcript);
+        $chunks = $this->chunkTranscript($transcript, $maxTokens);
         if (count($chunks) === 1) {
             return $this->finalSummary($transcript, $chatTitle, $chatId, $date);
         }
 
         $summaries = [];
         foreach ($chunks as $chunk) {
-            $summaries[] = $this->summarizeChunk($chunk);
+            try {
+                $summaries[] = $this->summarizeChunk($chunk);
+            } catch (\Throwable $e) {
+                if ($e->getCode() === \CURLE_OPERATION_TIMEDOUT && $maxTokens > 100) {
+                    return $this->summarize($transcript, $chatTitle, $chatId, $date, (int)($maxTokens / 2));
+                }
+                throw $e;
+            }
         }
 
         $summaryInput = implode("\n", $summaries);

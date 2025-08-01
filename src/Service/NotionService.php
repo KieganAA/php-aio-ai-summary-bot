@@ -37,6 +37,8 @@ class NotionService
             'Authorization: Bearer ' . $this->token,
             'Notion-Version: 2022-06-28'
         ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 600);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_exec($ch);
         curl_close($ch);
