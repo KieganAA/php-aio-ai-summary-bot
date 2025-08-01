@@ -279,10 +279,10 @@ PROMPT;
                 $items = [$items];
             }
             if (!is_array($items) || empty($items)) {
-                $lines[] = '   * Нет';
+                $lines[] = '  - Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '   * ' . $item;
+                    $lines[] = '  - ' . $item;
                 }
             }
             $lines[] = '';

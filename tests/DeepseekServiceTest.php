@@ -24,7 +24,7 @@ class DeepseekServiceTest extends TestCase
 
         $this->assertStringContainsString('# Сводка чата', $md);
         $this->assertStringContainsString('1. 👥  Участники', $md);
-        $this->assertStringContainsString('Алиса — разработчик', $md);
+        $this->assertStringContainsString("  - Алиса — разработчик", $md);
     }
 
     public function testExtractEmployeeContext(): void
