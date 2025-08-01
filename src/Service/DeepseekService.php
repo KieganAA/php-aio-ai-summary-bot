@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Src\Service;
 
 use DeepSeek\DeepSeekClient;
+use GuzzleHttp\Client as HttpClient;
 use Src\Util\TokenCounter;
 
 /**
@@ -21,8 +22,18 @@ class DeepseekService
 
     private function client(): DeepSeekClient
     {
-        // Build a fresh client for every request to ensure a clean state
-        return DeepSeekClient::build($this->apiKey);
+        // Build a fresh client for every request to ensure a clean state.
+        // Enable streaming and disable timeouts so long requests do not idle out.
+        $http = new HttpClient([
+            'base_uri' => 'https://api.deepseek.com/v3',
+            'timeout'  => 0,
+            'headers'  => [
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type'  => 'application/json',
+            ],
+        ]);
+
+        return (new DeepSeekClient($http))->withStream(true);
     }
 
     /**
