@@ -34,7 +34,7 @@ class ReportService
                 continue;
             }
 
-            $transcript = \Src\Util\TextUtils::buildTranscript($msgs);
+            $transcript = TextUtils::cleanTranscript(TextUtils::buildTranscript($msgs));
 
             $chatTitle = $this->repo->getChatTitle($chatId);
             $summary = $this->deepseek->summarize(

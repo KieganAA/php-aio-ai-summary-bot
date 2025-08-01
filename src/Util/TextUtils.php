@@ -15,6 +15,20 @@ class TextUtils
         return $transcript;
     }
 
+    public static function cleanTranscript(string $rawTranscript): string
+    {
+        return preg_replace(
+            [
+                '/^\\w+ joined the group.*$/m',
+                '/^\\w+ left the group.*$/m',
+                '/^\\w+ sent a sticker.*$/m',
+                '/^Photo · .*$/m'
+            ],
+            '',
+            $rawTranscript
+        );
+    }
+
     public static function escapeMarkdown(string $text): string
     {
         // Do not escape '-' or '.' to allow proper Markdown bullet and numbered lists
