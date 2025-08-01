@@ -28,7 +28,7 @@ class ConfigTest extends TestCase
         $ref = new ReflectionClass(Database::class);
         $prop = $ref->getProperty('connection');
         $prop->setAccessible(true);
-        $prop->setValue(null);
+        $prop->setValue(null, null);
 
         $conn = Database::getConnection(new NullLogger());
         $conn->executeStatement('CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)');
