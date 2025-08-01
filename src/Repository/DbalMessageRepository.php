@@ -93,4 +93,11 @@ class DbalMessageRepository implements MessageRepositoryInterface
         $this->logger->info('Chats fetched', ['count' => count($rows)]);
         return $rows;
     }
+
+    public function getChatTitle(int $chatId): string
+    {
+        $row = $this->conn->fetchAssociative('SELECT title FROM chats WHERE id = ?', [$chatId]);
+        $this->logger->info('Chat title fetched', ['chat_id' => $chatId]);
+        return $row['title'] ?? '';
+    }
 }

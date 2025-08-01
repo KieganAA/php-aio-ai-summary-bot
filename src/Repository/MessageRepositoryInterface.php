@@ -19,4 +19,6 @@ interface MessageRepositoryInterface
     public function markProcessed(int $chatId, int $dayTs): void;
 
     public function listChats(): array;
+
+    public function getChatTitle(int $chatId): string;
 }

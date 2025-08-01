@@ -31,5 +31,7 @@ class DatabaseTest extends TestCase
         $repo->markProcessed(1, time());
         $msgs2 = $repo->getMessagesForChat(1, time());
         $this->assertCount(0, $msgs2);
+
+        $this->assertSame('', $repo->getChatTitle(1));
     }
 }

@@ -36,10 +36,15 @@ class ReportServiceTest extends TestCase
             ->with(1, $day)
             ->willReturn($messages);
 
+        $repo->expects($this->once())
+            ->method('getChatTitle')
+            ->with(1)
+            ->willReturn('My Chat');
+
         $transcript = "[u @ 01:00] hi\n[v @ 02:00] there\n";
         $deepseek->expects($this->once())
             ->method('summarize')
-            ->with($transcript)
+            ->with($transcript, 'My Chat', 1, date('Y-m-d', $day))
             ->willReturn('summary');
 
         $telegram->expects($this->once())
