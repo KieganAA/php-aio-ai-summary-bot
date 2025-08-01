@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace Src\Commands\UserCommands;
 
@@ -7,6 +8,7 @@ use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
+use Psr\Log\LoggerInterface;
 use Src\Service\LoggerService;
 
 /**
@@ -20,12 +22,12 @@ class StartCommand extends UserCommand
     protected $description = 'Start command';
     protected $usage = '/start';
     protected $version = '1.0.0';
-    private $logger;
+    private LoggerInterface $logger;
 
     public function __construct(...$args)
     {
         parent::__construct(...$args);
-        $this->logger = \Src\Service\LoggerService::getLogger();
+        $this->logger = LoggerService::getLogger();
     }
 
     /**

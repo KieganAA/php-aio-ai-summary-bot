@@ -3,16 +3,17 @@ declare(strict_types=1);
 
 namespace Src\Commands\UserCommands;
 
-use Src\Service\DeepseekService;
 use Longman\TelegramBot\Commands\UserCommand;
-use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Entities\Keyboard;
+use Longman\TelegramBot\Entities\ServerResponse;
+use Psr\Log\LoggerInterface;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
-use Src\Service\LoggerService;
 use Src\Service\Database;
-use Src\Util\TextUtils;
+use Src\Service\DeepseekService;
+use Src\Service\LoggerService;
 use Src\Service\TelegramService;
+use Src\Util\TextUtils;
 
 class SummarizeCommand extends UserCommand
 {
@@ -20,7 +21,7 @@ class SummarizeCommand extends UserCommand
     protected $description = 'On‑demand summary of today’s chat';
     protected $usage = '/summarize';
     protected $version = '1.0.0';
-    private $logger;
+    private LoggerInterface $logger;
 
     public function __construct(...$args)
     {
