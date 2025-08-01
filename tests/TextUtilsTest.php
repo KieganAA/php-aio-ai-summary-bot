@@ -23,4 +23,11 @@ class TextUtilsTest extends TestCase
         $expected = "Line with hyphen \\- dash\n- bullet item";
         $this->assertSame($expected, TextUtils::escapeMarkdown($input));
     }
+
+    public function testEscapeMarkdownEscapesDots(): void
+    {
+        $input = "Sentence one. Sentence two.";
+        $expected = "Sentence one\\. Sentence two\\.";
+        $this->assertSame($expected, TextUtils::escapeMarkdown($input));
+    }
 }
