@@ -246,12 +246,32 @@ PROMPT;
         $client->query($prompt, 'system');
         $raw = $this->runWithRetries($client);
         $content = $this->extractContent($raw);
-        $json = json_decode($content, true);
-        if (!is_array($json)) {
+        $json = $this->decodeJson($content);
+        if ($json === null) {
             return $content;
         }
 
         return $this->jsonToMarkdown($json, $chatTitle, $chatId, $date);
+    }
+
+    /**
+     * Attempt to decode JSON that may be wrapped in additional text or code fences.
+     */
+    private function decodeJson(string $content): ?array
+    {
+        $json = json_decode($content, true);
+        if (is_array($json)) {
+            return $json;
+        }
+
+        if (preg_match('/{.*}/s', $content, $m)) {
+            $json = json_decode($m[0], true);
+            if (is_array($json)) {
+                return $json;
+            }
+        }
+
+        return null;
     }
 
     public function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string

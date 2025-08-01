@@ -27,6 +27,20 @@ class DeepseekServiceTest extends TestCase
         $this->assertStringContainsString("  - Алиса — разработчик", $md);
     }
 
+    public function testDecodeJsonHandlesCodeBlock(): void
+    {
+        $service = new DeepseekService('key');
+        $content = "Chat Summary:\n```json\n{\"a\":1}\n```";
+
+        $ref = new ReflectionClass(DeepseekService::class);
+        $method = $ref->getMethod('decodeJson');
+        $method->setAccessible(true);
+
+        $json = $method->invoke($service, $content);
+
+        $this->assertSame(['a' => 1], $json);
+    }
+
     public function testExtractEmployeeContext(): void
     {
         $service = new DeepseekService('key');
