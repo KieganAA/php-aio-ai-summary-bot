@@ -254,7 +254,7 @@ PROMPT;
         return $this->jsonToMarkdown($json, $chatTitle, $chatId, $date);
     }
 
-    private function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string
+    public function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string
     {
         $sections = [
             ['emoji' => '👥', 'title' => 'Участники', 'key' => 'participants'],
