@@ -31,11 +31,12 @@ class TextUtils
 
     public static function escapeMarkdown(string $text): string
     {
-        // Do not escape '-' or '.' to allow proper Markdown bullet and numbered lists
-        $special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '=', '|', '{', '}', '!'];
+        $special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '!'];
         foreach ($special as $char) {
             $text = str_replace($char, '\\' . $char, $text);
         }
+        // allow bullet lists: unescape hyphen at line start followed by space
+        $text = preg_replace('/(^|\n)\\\\-\s/', '$1- ', $text);
         return $text;
     }
 }
