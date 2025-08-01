@@ -105,6 +105,37 @@ class DeepseekService
     }
 
     /**
+     * Split transcript participants into our employees and client employees.
+     *
+     * @return array{0: string[], 1: string[]} [our employees, client employees]
+     */
+    private function extractEmployeeContext(string $transcript): array
+    {
+        $participants = [];
+        foreach (preg_split("/\r\n|\n|\r/", trim($transcript)) as $line) {
+            if (preg_match('/^\[([^\s]+)\s*@/u', $line, $m)) {
+                $participants[] = $m[1];
+            }
+        }
+        $participants = array_values(array_unique($participants));
+
+        $employees = array_map(
+            static fn(string $u) => ['username' => $u, 'nickname' => $u],
+            $participants
+        );
+        $our = EmployeeService::deriveOurEmployees($employees);
+        $ourNames = array_map(static fn(array $e) => $e['username'], $our);
+        $clientNames = array_values(array_diff($participants, $ourNames));
+
+        return [$ourNames, $clientNames];
+    }
+
+    private function formatNames(array $names): string
+    {
+        return empty($names) ? 'none' : implode(', ', $names);
+    }
+
+    /**
      * Split a transcript into ~3000 token chunks.
      */
     private function chunkTranscript(string $transcript, int $maxTokens = 3000): array
@@ -174,15 +205,28 @@ SYS;
     /**
      * Run the heavy global pass using a concise JSON-centred prompt.
      */
-    private function finalSummary(string $input, string $chatTitle, int $chatId, string $date): string
-    {
+    private function finalSummary(
+        string $input,
+        string $chatTitle,
+        int $chatId,
+        string $date,
+        array $ourEmployees,
+        array $clientEmployees
+    ): string {
         $client = $this->client();
+
+        $our = $this->formatNames($ourEmployees);
+        $clients = $this->formatNames($clientEmployees);
 
         $prompt = <<<PROMPT
 ### System
 You are "ChatSummariser-v2".
 You will summarise a Telegram chat excerpt into a compact JSON object.
 Do not add text outside JSON. Language: Russian. Use ≤20 words per bullet.
+
+### Participants
+Our employees: {$our}
+Client employees: {$clients}
 
 ### Input
 CHAT_TITLE: {$chatTitle}
@@ -266,9 +310,11 @@ PROMPT;
     ): string {
         $date ??= date('Y-m-d');
 
+        [$ourEmployees, $clientEmployees] = $this->extractEmployeeContext($transcript);
+
         $chunks = $this->chunkTranscript($transcript, $maxTokens);
         if (count($chunks) === 1) {
-            return $this->finalSummary($transcript, $chatTitle, $chatId, $date);
+            return $this->finalSummary($transcript, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
         }
 
         $summaries = [];
@@ -284,6 +330,6 @@ PROMPT;
         }
 
         $summaryInput = implode("\n", $summaries);
-        return $this->finalSummary($summaryInput, $chatTitle, $chatId, $date);
+        return $this->finalSummary($summaryInput, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
     }
 }
