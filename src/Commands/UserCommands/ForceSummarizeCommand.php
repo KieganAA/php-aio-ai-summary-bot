@@ -65,9 +65,10 @@ class ForceSummarizeCommand extends UserCommand
         }
 
         $raw = TextUtils::buildTranscript($msgs);
+        $cleaned = TextUtils::cleanTranscript($raw);
         $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
         $chatTitle = $repo->getChatTitle($targetId);
-        $summary = $deepseek->summarize($raw, $chatTitle, $targetId, date('Y-m-d', $dayTs));
+        $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, date('Y-m-d', $dayTs));
         $this->logger->info('Force summary generated', ['chat_id' => $targetId]);
 
         $response = Request::sendMessage([
