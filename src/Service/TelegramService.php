@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Src\Service;
 
+use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 use Longman\TelegramBot\Telegram;
@@ -30,17 +31,43 @@ class TelegramService
         }
     }
 
-    public function sendMessage(int $chatId, string $text): void
+    /**
+     * Send a message to Telegram handling length limits and error logging.
+     *
+     * Telegram messages have a maximum length of 4096 characters. Longer
+     * messages are split into multiple chunks and sent sequentially. The
+     * method returns the response of the last chunk sent.
+     */
+    public function sendMessage(int $chatId, string $text, string $parseMode = 'Markdown'): ServerResponse
     {
-        try {
-            Request::sendMessage([
-                'chat_id' => $chatId,
-                'text' => $text,
-                'parse_mode' => 'Markdown',
-            ]);
-            $this->logger->info('Sent message to Telegram', ['chat_id' => $chatId]);
-        } catch (TelegramException $e) {
-            $this->logger->error('Telegram sendMessage failed: ' . $e->getMessage());
+        $maxLength = 4096;
+        $response = Request::emptyResponse();
+
+        $length = mb_strlen($text);
+        for ($offset = 0; $offset < $length; $offset += $maxLength) {
+            $chunk = mb_substr($text, $offset, $maxLength);
+
+            try {
+                $response = Request::sendMessage([
+                    'chat_id' => $chatId,
+                    'text' => $chunk,
+                    'parse_mode' => $parseMode,
+                ]);
+
+                if ($response->isOk()) {
+                    $this->logger->info('Sent message to Telegram', ['chat_id' => $chatId]);
+                } else {
+                    $this->logger->error('Telegram sendMessage failed', [
+                        'chat_id' => $chatId,
+                        'error' => $response->getDescription(),
+                    ]);
+                }
+            } catch (TelegramException $e) {
+                $this->logger->error('Telegram sendMessage failed: ' . $e->getMessage());
+                break;
+            }
         }
+
+        return $response;
     }
 }

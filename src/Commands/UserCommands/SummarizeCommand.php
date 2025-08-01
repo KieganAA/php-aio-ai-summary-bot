@@ -6,13 +6,13 @@ namespace Src\Commands\UserCommands;
 use Src\Service\DeepseekService;
 use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
-use Longman\TelegramBot\Request;
 use Longman\TelegramBot\Entities\Keyboard;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\LoggerService;
 use Src\Service\Database;
 use Src\Util\TextUtils;
+use Src\Service\TelegramService;
 
 class SummarizeCommand extends UserCommand
 {
@@ -74,12 +74,21 @@ class SummarizeCommand extends UserCommand
         $repo->markProcessed($targetId, $dayTs);
         $this->logger->info('Messages marked processed after summarize', ['chat_id' => $targetId]);
 
-        $response = Request::sendMessage([
-            'chat_id' => $chatId,
-            'text' => "*Chat Summary:*\n" . TextUtils::escapeMarkdown($summary),
-            'parse_mode' => 'MarkdownV2',
-        ]);
-        $this->logger->info('Summary sent to chat', ['chat_id' => $chatId]);
+        $telegram = new TelegramService();
+        $response = $telegram->sendMessage(
+            $chatId,
+            "*Chat Summary:*\n" . TextUtils::escapeMarkdown($summary),
+            'MarkdownV2'
+        );
+        if ($response->isOk()) {
+            $this->logger->info('Summary sent to chat', ['chat_id' => $chatId]);
+        } else {
+            $this->logger->error('Failed to send summary', [
+                'chat_id' => $chatId,
+                'error' => $response->getDescription(),
+            ]);
+        }
+
         return $response;
     }
 }
