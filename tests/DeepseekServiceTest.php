@@ -26,4 +26,19 @@ class DeepseekServiceTest extends TestCase
         $this->assertStringContainsString('1. 👥  Участники', $md);
         $this->assertStringContainsString('Алиса — разработчик', $md);
     }
+
+    public function testExtractEmployeeContext(): void
+    {
+        $service = new DeepseekService('key');
+        $transcript = "[AIOTom @ 09:00] hi\n[vdevt @ 09:05] hi\n[client @ 09:10] yo";
+
+        $ref = new ReflectionClass(DeepseekService::class);
+        $method = $ref->getMethod('extractEmployeeContext');
+        $method->setAccessible(true);
+
+        [$our, $clients] = $method->invoke($service, $transcript);
+
+        $this->assertSame(['AIOTom', 'vdevt'], $our);
+        $this->assertSame(['client'], $clients);
+    }
 }
