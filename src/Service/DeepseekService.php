@@ -38,6 +38,36 @@ class DeepseekService
     }
 
     /**
+     * Execute the API request with retries to handle transient Cloudflare
+     * 525 errors (SSL handshake failed).  A small delay is applied between
+     * attempts.
+     */
+    private function runWithRetries(DeepSeekClient $client, int $maxRetries = 3): string
+    {
+        $attempt = 0;
+        while (true) {
+            try {
+                $raw = $client->run();
+            } catch (\Throwable $e) {
+                if (++$attempt >= $maxRetries) {
+                    throw $e;
+                }
+                usleep(250_000); // wait 250ms before retrying
+                continue;
+            }
+
+            if (stripos($raw, 'error code: 525') === false) {
+                return $raw;
+            }
+
+            if (++$attempt >= $maxRetries) {
+                throw new \RuntimeException('Cloudflare SSL handshake failed (error 525)');
+            }
+            usleep(250_000);
+        }
+    }
+
+    /**
      * Extract the assistant content from a DeepSeek response.
      *
      * The API may return Server Sent Events (SSE) when streaming is enabled.
@@ -137,7 +167,7 @@ SYS;
             ->query($system, 'system')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
-        $raw = $client->run();
+        $raw = $this->runWithRetries($client);
         return trim($this->extractContent($raw));
     }
 
@@ -170,7 +200,7 @@ TRANSCRIPT:
 PROMPT;
 
         $client->query($prompt, 'system');
-        $raw = $client->run();
+        $raw = $this->runWithRetries($client);
         $content = $this->extractContent($raw);
         $json = json_decode($content, true);
         if (!is_array($json)) {

@@ -37,12 +37,20 @@ class ReportService
             $transcript = TextUtils::cleanTranscript(TextUtils::buildTranscript($msgs));
 
             $chatTitle = $this->repo->getChatTitle($chatId);
-            $summary = $this->deepseek->summarize(
-                $transcript,
-                $chatTitle,
-                $chatId,
-                date('Y-m-d', $dayTs)
-            );
+            try {
+                $summary = $this->deepseek->summarize(
+                    $transcript,
+                    $chatTitle,
+                    $chatId,
+                    date('Y-m-d', $dayTs)
+                );
+            } catch (\Throwable $e) {
+                $this->logger->error('Failed to generate summary', [
+                    'chat_id' => $chatId,
+                    'error'   => $e->getMessage(),
+                ]);
+                continue;
+            }
             $header = "*Report for chat* `{$chatId}`\n_" . date('Y-m-d', $dayTs) . "_\n\n";
             $reportText = $header . $summary;
             $this->telegram->sendMessage($this->summaryChatId, $reportText);
