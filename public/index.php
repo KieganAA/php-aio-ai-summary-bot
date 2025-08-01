@@ -4,9 +4,10 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
 use Src\Config\Config;
+// Raise script limits for long transcripts
 
-// Increase memory limit to avoid Monolog exhausting default 128M
-ini_set('memory_limit', '256M');
+ini_set('max_execution_time', '600');
+ini_set('memory_limit', '1G');
 
 Config::load(__DIR__ . '/..');
 
