@@ -15,9 +15,9 @@ class TelegramService
 {
     private LoggerInterface $logger;
 
-    public function __construct()
+    public function __construct(?LoggerInterface $logger = null)
     {
-        $this->logger = LoggerService::getLogger();
+        $this->logger = $logger ?? LoggerService::getLogger();
 
         try {
             new Telegram(
@@ -47,12 +47,16 @@ class TelegramService
         for ($offset = 0; $offset < $length; $offset += $maxLength) {
             $chunk = mb_substr($text, $offset, $maxLength);
 
+            $params = [
+                'chat_id' => $chatId,
+                'text' => $chunk,
+            ];
+            if ($parseMode !== '') {
+                $params['parse_mode'] = $parseMode;
+            }
+
             try {
-                $response = Request::sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => $chunk,
-                    'parse_mode' => $parseMode,
-                ]);
+                $response = Request::sendMessage($params);
 
                 if ($response->isOk()) {
                     $this->logger->info('Sent message to Telegram', ['chat_id' => $chatId]);

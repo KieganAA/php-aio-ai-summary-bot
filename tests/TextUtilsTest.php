@@ -16,4 +16,11 @@ class TextUtilsTest extends TestCase
         $this->assertStringNotContainsString('Photo ·', $cleaned);
         $this->assertStringContainsString('[foo @ 00:00] hello', $cleaned);
     }
+
+    public function testEscapeMarkdownHandlesHyphens(): void
+    {
+        $input = "Line with hyphen - dash\n- bullet item";
+        $expected = "Line with hyphen \\- dash\n- bullet item";
+        $this->assertSame($expected, TextUtils::escapeMarkdown($input));
+    }
 }

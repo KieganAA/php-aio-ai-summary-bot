@@ -6,6 +6,7 @@ namespace Src\Service;
 use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\Logger;
 use Monolog\LogRecord;
+use Psr\Log\NullLogger;
 
 class TelegramLogHandler extends AbstractProcessingHandler
 {
@@ -15,13 +16,13 @@ class TelegramLogHandler extends AbstractProcessingHandler
     public function __construct(int $chatId, int $level = Logger::INFO, bool $bubble = true)
     {
         parent::__construct($level, $bubble);
-        $this->telegram = new TelegramService();
+        $this->telegram = new TelegramService(new NullLogger());
         $this->chatId = $chatId;
     }
 
     protected function write(LogRecord $record): void
     {
         $message = sprintf("%s: %s", $record->level->getName(), $record->message);
-        $this->telegram->sendMessage($this->chatId, $message);
+        $this->telegram->sendMessage($this->chatId, $message, '');
     }
 }
