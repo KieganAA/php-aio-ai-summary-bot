@@ -251,7 +251,7 @@ PROMPT;
     public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
     {
         $client = $this->client();
-        $prompt = "Summarize in no more than 12 words what the chat messages are about:\n" . $transcript;
+        $prompt = "Summarize in no more than 30 words what the chat messages are about:\n" . $transcript;
         $client->setTemperature(0.2)->query($prompt, 'user');
         $raw = $this->runWithRetries($client);
         return trim($this->extractContent($raw));

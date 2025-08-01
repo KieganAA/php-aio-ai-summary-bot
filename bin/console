@@ -8,13 +8,15 @@ ini_set('memory_limit', '1G');
 
 
 use Src\Config\Config;
+use Src\Console\DailyReportCommand;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\Database;
 use Src\Service\DeepseekService;
 use Src\Service\LoggerService;
+use Src\Service\NotionService;
 use Src\Service\ReportService;
+use Src\Service\SlackService;
 use Src\Service\TelegramService;
-use Src\Console\DailyReportCommand;
 use Symfony\Component\Console\Application;
 
 Config::load(__DIR__ . '/..');
@@ -27,8 +29,8 @@ $conn = Database::getConnection($logger);
 $repo = new DbalMessageRepository($conn, $logger);
 $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
 $telegram = new TelegramService();
-$slack = new \Src\Service\SlackService(Config::get('SLACK_WEBHOOK_URL'));
-$notion = new \Src\Service\NotionService(Config::get('NOTION_TOKEN'), Config::get('NOTION_DATABASE_ID'));
+$slack = new SlackService(Config::get('SLACK_WEBHOOK_URL'));
+$notion = new NotionService(Config::get('NOTION_TOKEN'), Config::get('NOTION_DATABASE_ID'));
 $report = new ReportService($repo, $deepseek, $telegram, (int)Config::get('SUMMARY_CHAT_ID'), $slack, $notion);
 
 $application = new Application();
