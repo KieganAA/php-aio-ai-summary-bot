@@ -68,8 +68,16 @@ class SummarizeCommand extends UserCommand
         $cleaned = TextUtils::cleanTranscript($raw);
         $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
         $chatTitle = $repo->getChatTitle($targetId);
-        $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, date('Y-m-d', $dayTs));
-        $this->logger->info('Summary generated', ['chat_id' => $targetId]);
+        try {
+            $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, date('Y-m-d', $dayTs));
+            $this->logger->info('Summary generated', ['chat_id' => $targetId]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Summary generation failed', [
+                'chat_id' => $targetId,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->replyToChat('Failed to generate summary, please try again later.');
+        }
 
         $repo->markProcessed($targetId, $dayTs);
         $this->logger->info('Messages marked processed after summarize', ['chat_id' => $targetId]);
