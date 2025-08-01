@@ -25,11 +25,11 @@ class ReportService
         $this->logger = LoggerService::getLogger();
     }
 
-    public function runDailyReports(int $dayTs): void
+    public function runDailyReports(int $now): void
     {
-        $this->logger->info('Running daily reports', ['day' => date('Y-m-d', $dayTs)]);
-        foreach ($this->repo->listActiveChats($dayTs) as $chatId) {
-            $msgs = $this->repo->getMessagesForChat($chatId, $dayTs);
+        $this->logger->info('Running daily reports', ['day' => date('Y-m-d', $now)]);
+        foreach ($this->repo->listActiveChats($now) as $chatId) {
+            $msgs = $this->repo->getMessagesForChat($chatId, $now);
             if (empty($msgs)) {
                 continue;
             }
@@ -42,7 +42,7 @@ class ReportService
                     $transcript,
                     $chatTitle,
                     $chatId,
-                    date('Y-m-d', $dayTs)
+                    date('Y-m-d', $now)
                 );
             } catch (\Throwable $e) {
                 $this->logger->error('Failed to generate summary', [
@@ -51,18 +51,34 @@ class ReportService
                 ]);
                 continue;
             }
-            $header = "*Report for chat* `{$chatId}`\n_" . date('Y-m-d', $dayTs) . "_\n\n";
-            $reportText = $header . $summary;
+            $note = '';
+            $lastMsgTs = $msgs[count($msgs) - 1]['message_date'];
+            if ($now - $lastMsgTs < 3600) {
+                $recent = array_slice($msgs, -5);
+                $recentTranscript = TextUtils::cleanTranscript(TextUtils::buildTranscript($recent));
+                try {
+                    $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
+                    $note = "\n\n⚠️ Active conversation about: {$topic}";
+                } catch (\Throwable $e) {
+                    $this->logger->error('Failed to summarise active conversation', [
+                        'chat_id' => $chatId,
+                        'error'   => $e->getMessage(),
+                    ]);
+                    $note = "\n\n⚠️ Active conversation ongoing";
+                }
+            }
+            $header = "*Report for chat* `{$chatId}`\n_" . date('Y-m-d', $now) . "_\n\n";
+            $reportText = $header . $summary . $note;
             $this->telegram->sendMessage($this->summaryChatId, $reportText);
             if ($this->slack !== null) {
                 $this->slack->sendMessage(strip_tags($reportText));
             }
             if ($this->notion !== null) {
-                $title = 'Report ' . date('Y-m-d', $dayTs) . ' #' . $chatId;
+                $title = 'Report ' . date('Y-m-d', $now) . ' #' . $chatId;
                 $this->notion->addReport($title, strip_tags($summary));
             }
             $this->logger->info('Daily report sent', ['chat_id' => $chatId]);
-            $this->repo->markProcessed($chatId, $dayTs);
+            $this->repo->markProcessed($chatId, $now);
         }
     }
 }
