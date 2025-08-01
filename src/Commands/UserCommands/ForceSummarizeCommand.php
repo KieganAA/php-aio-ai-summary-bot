@@ -6,13 +6,13 @@ namespace Src\Commands\UserCommands;
 use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Entities\Keyboard;
-use Longman\TelegramBot\Request;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\Database;
 use Src\Service\LoggerService;
 use Src\Service\DeepseekService;
 use Src\Util\TextUtils;
+use Src\Service\TelegramService;
 
 class ForceSummarizeCommand extends UserCommand
 {
@@ -71,12 +71,21 @@ class ForceSummarizeCommand extends UserCommand
         $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, date('Y-m-d', $dayTs));
         $this->logger->info('Force summary generated', ['chat_id' => $targetId]);
 
-        $response = Request::sendMessage([
-            'chat_id' => $chatId,
-            'text' => "*Chat Summary:*\n" . TextUtils::escapeMarkdown($summary),
-            'parse_mode' => 'MarkdownV2',
-        ]);
-        $this->logger->info('Force summary sent to chat', ['chat_id' => $chatId]);
+        $telegram = new TelegramService();
+        $response = $telegram->sendMessage(
+            $chatId,
+            "*Chat Summary:*\n" . TextUtils::escapeMarkdown($summary),
+            'MarkdownV2'
+        );
+        if ($response->isOk()) {
+            $this->logger->info('Force summary sent to chat', ['chat_id' => $chatId]);
+        } else {
+            $this->logger->error('Failed to send force summary', [
+                'chat_id' => $chatId,
+                'error' => $response->getDescription(),
+            ]);
+        }
+
         return $response;
     }
 }
