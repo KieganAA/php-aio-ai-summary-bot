@@ -73,9 +73,14 @@ class SummarizeCommand extends UserCommand
         try {
             $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, $dateStr);
             $this->logger->info('Summary generated', ['chat_id' => $targetId]);
+
             $json = json_decode($summary, true);
+            if (!is_array($json) && preg_match('/{.*}/s', $summary, $m)) {
+                $json = json_decode($m[0], true);
+            }
             if (is_array($json)) {
                 $summary = $deepseek->jsonToMarkdown($json, $chatTitle, $targetId, $dateStr);
+                $this->logger->info('Summary is valid JSON, decoding', ['summary' => $summary]);
             }
         } catch (\Throwable $e) {
             $this->logger->error('Summary generation failed', [
