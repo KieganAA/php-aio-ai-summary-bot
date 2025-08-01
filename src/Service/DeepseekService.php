@@ -64,89 +64,81 @@ class DeepseekService
     }
 
     /**
-     * Run the heavy global pass using the standard DailyChat prompt.
+     * Run the heavy global pass using a concise JSON-centred prompt.
      */
     private function finalSummary(string $input, string $chatTitle, int $chatId, string $date): string
     {
         $client = $this->client();
+
         $prompt = <<<PROMPT
 ### System
-You are "DailyChat-Reporter-v1".
-Your sole task is to turn a full-day Telegram transcript into an **identical, repeatable Markdown report** that ops can skim in
-<2 min.
-You must output **exactly the 10 numbered sections shown below** (even if some are empty ⇒ write "None").
-Never add, delete, reorder, or rename sections.
-Keep every bullet ≤ 20 words, use past tense, omit pleasantries, redact sensitive data as "***".
+You are "ChatSummariser-v2".
+You will summarise a Telegram chat excerpt into a compact JSON object.
+Do not add text outside JSON. Language: Russian. Use ≤20 words per bullet.
 
 ### Input
-CHAT_TITLE: **{$chatTitle}**
-CHAT_ID: **{$chatId}**
-DATE: **{$date}** (Europe/Berlin)
+CHAT_TITLE: {$chatTitle}
+DATE: {$date}
 TRANSCRIPT:
 {$input}
 
-### Output format (copy verbatim)
-
-# Daily Chat Report
-
-Chat: {CHAT_TITLE} (ID {CHAT_ID})
-Date: {YYYY-MM-DD}
-
-1. 👥  Participants
-
-   * {nameA} — role
-   * {nameB} — role
-
-2. 🗺️  High-Level Overview
-
-   * …
-
-3. 💬  Main Topics Discussed
-
-   * …
-
-4. 🛠️  Issues Raised (with status)
-
-   * …
-
-5. ✅  Issues Resolved Today
-
-   * …
-
-6. ⏳  Open Tasks / Blockers
-
-   * …
-
-7. 📌  Action Items for Support Team
-
-   * [ ] owner • due-date • task
-
-8. 📌  Action Items for Client
-
-   * [ ] owner • due-date • task
-
-9. 🤔  Questions Awaiting Reply
-
-   * …
-
-10. 🔮  Next Steps / Follow-ups
-
-    * …
-
-### Rules (obligatory)
-* Always produce **all 10 sections** in the order above.
-* Bullets start with "- ". Sub-bullets are indented two spaces.
-* If a section has zero content, write "None".
-* Do **not** generate any text outside the fenced block.
-* Language: write in succinct business English, preserve domain jargon.
-* Strip greetings, signatures, stickers, images; summarise only meaning.
-* Token budget ≈ 1 000; truncate low-value chatter if needed, but never omit useful decisions, tasks, or blockers.
+### Output (JSON only)
+{
+  "participants": ["..."],
+  "topics": ["..."],
+  "issues": ["..."],
+  "decisions": ["..."],
+}
 PROMPT;
 
         $client->query($prompt, 'system');
         $raw = $client->run();
         $data = json_decode($raw, true);
-        return trim($data['choices'][0]['message']['content'] ?? $raw);
+        $content = trim($data['choices'][0]['message']['content'] ?? $raw);
+        $json = json_decode($content, true);
+        if (!is_array($json)) {
+            return $content;
+        }
+
+        return $this->jsonToMarkdown($json, $chatTitle, $chatId, $date);
+    }
+
+    private function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string
+    {
+        $sections = [
+            ['emoji' => '👥', 'title' => 'Участники', 'key' => 'participants'],
+            ['emoji' => '💬', 'title' => 'Темы', 'key' => 'topics'],
+            ['emoji' => '⚠️', 'title' => 'Проблемы', 'key' => 'issues'],
+            ['emoji' => '✅', 'title' => 'Решения', 'key' => 'decisions'],
+        ];
+
+        $lines = [];
+        $lines[] = '# Сводка чата';
+        $lines[] = '';
+        $lines[] = "Chat: {$chatTitle} (ID {$chatId})";
+        $lines[] = "Date: {$date}";
+        $lines[] = '';
+
+        $num = 1;
+        foreach ($sections as $section) {
+            $lines[] = sprintf('%d. %s  %s', $num, $section['emoji'], $section['title']);
+            $lines[] = '';
+            $items = $data[$section['key']] ?? [];
+            if (is_string($items)) {
+                $items = [$items];
+            }
+            if (!is_array($items) || empty($items)) {
+                $lines[] = '   * Нет';
+            } else {
+                foreach ($items as $item) {
+                    $lines[] = '   * ' . $item;
+                }
+            }
+            $lines[] = '';
+            $num++;
+        }
+
+        return implode("\n", $lines);
     }
 
     public function summarize(
