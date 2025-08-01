@@ -24,6 +24,13 @@ class TextUtilsTest extends TestCase
         $this->assertSame($expected, TextUtils::escapeMarkdown($input));
     }
 
+    public function testEscapeMarkdownDoesNotUnescapeDanglingHyphen(): void
+    {
+        $input = '- ';
+        $expected = '\- ';
+        $this->assertSame($expected, TextUtils::escapeMarkdown($input));
+    }
+
     public function testEscapeMarkdownEscapesDots(): void
     {
         $input = "Sentence one. Sentence two.";

@@ -36,7 +36,7 @@ class TextUtils
             $text = str_replace($char, '\\' . $char, $text);
         }
         // allow bullet lists: unescape hyphen at line start (optionally indented)
-        $text = preg_replace('/(^|\n)(\s*)\\\\-\s/', '$1$2- ', $text);
+        $text = preg_replace('/(^|\n)(\s*)\\\\-\s+(?=\S)/', '$1$2- ', $text);
         return $text;
     }
 }
