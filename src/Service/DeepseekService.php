@@ -60,16 +60,46 @@ class DeepseekService
     }
 
     /**
-     * Summarise a single chunk with a tiny prompt.
+     * Summarise a single chunk using the strict JSON prompt.
      */
-    private function summarizeChunk(string $chunk): string
-    {
+    private function summarizeChunk(
+        string $chunk,
+        string $chatTitle,
+        int $chatId,
+        string $date,
+        int $chunkIndex
+    ): string {
         $client = $this->client();
-        $client->query(
-            "Summarise the following Telegram excerpt in bullet-point English. Focus on participants, topics, decisions and tasks.",
-            'system'
-        );
-        $client->query($chunk, 'user');
+
+        $system = <<<SYS
+You are ChatChunk-Summarizer-v1.
+Return STRICT JSON only (no prose). Goal: capture what happened in this chat excerpt so it can be merged later.
+
+Rules:
+- Language: English. Style: concise business, past tense.
+- Redact sensitive data as "***".
+- Prefer signal over chatter; ignore greetings, stickers, joins/leaves, images.
+- Each item ≤ 18 words. Max items: participants 10, topics 8, events 10, decisions 8, actions 10, blockers 6, questions 6.
+- If nothing for a field, output [] or "" (no null).
+- Do not invent facts; use "unknown" when missing.
+- Times: use ISO-8601 local time for DATE and TIMEZONE when explicit, else omit time.
+SYS;
+
+        $payload = [
+            'chat_title' => $chatTitle,
+            'chat_id' => (string)$chatId,
+            'date' => $date,
+            'timezone' => 'Europe/Berlin',
+            'chunk_id' => 'chunk-' . $chunkIndex,
+            'transcript' => $chunk,
+        ];
+
+        $client
+            ->setTemperature(0.2)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
         $raw = $client->run();
         $data = json_decode($raw, true);
         return trim($data['choices'][0]['message']['content'] ?? $raw);
@@ -168,9 +198,9 @@ PROMPT;
         }
 
         $summaries = [];
-        foreach ($chunks as $chunk) {
+        foreach ($chunks as $i => $chunk) {
             try {
-                $summaries[] = $this->summarizeChunk($chunk);
+                $summaries[] = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
             } catch (\Throwable $e) {
                 if ($e->getCode() === \CURLE_OPERATION_TIMEDOUT && $maxTokens > 100) {
                     return $this->summarize($transcript, $chatTitle, $chatId, $date, (int)($maxTokens / 2));
