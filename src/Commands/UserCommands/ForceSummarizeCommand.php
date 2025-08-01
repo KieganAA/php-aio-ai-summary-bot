@@ -69,7 +69,12 @@ class ForceSummarizeCommand extends UserCommand
         $cleaned = TextUtils::cleanTranscript($raw);
         $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
         $chatTitle = $repo->getChatTitle($targetId);
-        $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, date('Y-m-d', $dayTs));
+        $dateStr  = date('Y-m-d', $dayTs);
+        $summary   = $deepseek->summarize($cleaned, $chatTitle, $targetId, $dateStr);
+        $json      = json_decode($summary, true);
+        if (is_array($json)) {
+            $summary = $deepseek->jsonToMarkdown($json, $chatTitle, $targetId, $dateStr);
+        }
         $this->logger->info('Force summary generated', ['chat_id' => $targetId]);
 
         $telegram = new TelegramService();
