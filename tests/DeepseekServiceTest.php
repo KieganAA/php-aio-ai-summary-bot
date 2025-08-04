@@ -6,6 +6,12 @@ use Src\Service\DeepseekService;
 
 class DeepseekServiceTest extends TestCase
 {
+    public function testConstructorThrowsOnEmptyApiKey(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new DeepseekService('');
+    }
+
     public function testJsonToMarkdown(): void
     {
         $service = new DeepseekService('key');
