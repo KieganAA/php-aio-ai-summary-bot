@@ -275,11 +275,12 @@ PROMPT;
 
     public function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string
     {
+
         $sections = [
-            ['emoji' => '👥', 'title' => 'Участники', 'key' => 'participants'],
             ['emoji' => '💬', 'title' => 'Темы', 'key' => 'topics'],
             ['emoji' => '⚠️', 'title' => 'Проблемы', 'key' => 'issues'],
-            ['emoji' => '✅', 'title' => 'Решения', 'key' => 'decisions']
+            ['emoji' => '✅', 'title' => 'Решения', 'key' => 'decisions'],
+            ['emoji' => '👥', 'title' => 'Участники', 'key' => 'participants'],
         ];
 
         $lines   = [];
