@@ -300,10 +300,9 @@ PROMPT;
         ];
 
         $lines = [];
-        $titleLine  = TextUtils::escapeMarkdown($chatTitle);
-        $dateLine   = TextUtils::escapeMarkdown($date);
-        $chatIdLine = TextUtils::escapeMarkdown((string) $chatId);
-        $lines[]    = "*{$titleLine} (ID {$chatIdLine})* — {$dateLine}";
+        $titleWithId = TextUtils::escapeMarkdown("{$chatTitle} (ID {$chatId})");
+        $dateLine    = TextUtils::escapeMarkdown($date);
+        $lines[]     = "*{$titleWithId}* — {$dateLine}";
 
         foreach ($baseSections as $key => $title) {
             $items = $data[$key] ?? [];
