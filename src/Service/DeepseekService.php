@@ -171,16 +171,16 @@ class DeepseekService
         $client = $this->client();
 
         $system = <<<SYS
-You are ChatChunk-Summarizer-v1.
-Return STRICT JSON only (no prose). Goal: capture what happened in this chat excerpt so it can be merged later.
+Вы — ChatChunk-Summarizer-v1.
+Возвращайте ТОЛЬКО СТРОГИЙ JSON (без текста). Цель: зафиксировать, что произошло в этом фрагменте чата, чтобы потом объединить.
 
-Rules:
-- Language: Russian. Style: concise business, past tense.
-- Prefer signal over chatter; ignore greetings, stickers, joins/leaves, images.
-- Each item ≤ 20 words. Max items: participants 10, topics 8, events 10, decisions 8, actions 10, blockers 6, questions 6.
-- If nothing for a field, output [] or "" (no null).
-- Do not invent facts; use "unknown" when missing.
-- Times: use ISO-8601 local time for DATE and TIMEZONE when explicit, else omit time.
+Правила:
+- Язык: русский. Стиль: деловой, краткий, прошедшее время.
+- Важное важнее болтовни; игнорируйте приветствия, стикеры, входы/выходы, изображения.
+- Каждая запись ≤ 20 слов. Максимум записей: participants 10, topics 8, events 10, decisions 8, actions 10, blockers 6, questions 6.
+- Если для поля нет данных, выводите [] или "" (не null).
+- Не выдумывайте факты; используйте "unknown", когда данных нет.
+- Время: ISO-8601 местное время для DATE и TIMEZONE, если указано явно, иначе пропускайте время.
 SYS;
 
         $payload = [
@@ -219,22 +219,22 @@ SYS;
         $clients = $this->formatNames($clientEmployees);
 
         $prompt = <<<PROMPT
-### System
-You are "ChatSummariser-v2".
-You will summarise a Telegram chat excerpt into a compact JSON object.
-Do not add text outside JSON. Language: Russian. Use ≤20 words per bullet.
+### Система
+Вы — "ChatSummariser-v2".
+Вам нужно кратко суммировать отрывок чата Telegram в компактный JSON-объект.
+Не добавляйте текст вне JSON. Язык: русский. До 20 слов на пункт.
 
-### Participants
-Our employees: {$our}
-Client employees: {$clients}
+### Участники
+Наши сотрудники: {$our}
+Сотрудники клиента: {$clients}
 
-### Input
+### Вход
 CHAT_TITLE: {$chatTitle}
 DATE: {$date}
 TRANSCRIPT:
 {$input}
 
-### Output (JSON only)
+### Выход (только JSON)
 {
   "participants": ["..."],
   "topics": ["..."],
