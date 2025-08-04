@@ -37,4 +37,11 @@ class TextUtilsTest extends TestCase
         $expected = "Sentence one\\. Sentence two\\.";
         $this->assertSame($expected, TextUtils::escapeMarkdown($input));
     }
+
+    public function testEscapeMarkdownPreservesExistingEscapes(): void
+    {
+        $input = '\\_already escaped\\_ and *bold*';
+        $expected = '\\_already escaped\\_ and \\*bold\\*';
+        $this->assertSame($expected, TextUtils::escapeMarkdown($input));
+    }
 }

@@ -29,12 +29,27 @@ class TextUtils
         );
     }
 
+    /**
+     * Escape a string for safe use with Telegram MarkdownV2.
+     *
+     * Ported from the telegramify-markdown project to ensure proper
+     * escaping without double-escaping already escaped characters.
+     * @see https://github.com/sudoskys/telegramify-markdown
+     */
     public static function escapeMarkdown(string $text): string
     {
-        $special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
-        foreach ($special as $char) {
-            $text = str_replace($char, '\\' . $char, $text);
+        if ($text === '') {
+            return '';
         }
-        return $text;
+
+        // Convert HTML entities back to characters before escaping
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // First pass: escape all special MarkdownV2 characters
+        $pattern = '/([\\_\*\[\]\(\)~`>\#\+\-\=\|\{\}\.\!])/';
+        $escaped = preg_replace($pattern, "\\\\$1", $text);
+
+        // Second pass: remove double escaping
+        return preg_replace('/\\\\\\\\([\\_\*\[\]\(\)~`>\#\+\-\=\|\{\}\.\!])/', "\\\\$1", $escaped);
     }
 }

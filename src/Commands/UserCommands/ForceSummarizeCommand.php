@@ -84,7 +84,7 @@ class ForceSummarizeCommand extends UserCommand
         $telegram = new TelegramService();
         $response = $telegram->sendMessage(
             $chatId,
-            TextUtils::escapeMarkdown($summary),
+            $summary,
             'MarkdownV2'
         );
         if ($response->isOk()) {
