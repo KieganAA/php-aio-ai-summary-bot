@@ -67,9 +67,10 @@ class ReportService
                     $note = "\n\n⚠️ Active conversation ongoing";
                 }
             }
-            $header = "*Report for chat* `{$chatId}`\n_" . date('Y-m-d', $now) . "_\n\n";
+            $dateLine   = TextUtils::escapeMarkdown(date('Y-m-d', $now));
+            $header     = "*Report for chat* `{$chatId}`\n_{$dateLine}_\n\n";
             $reportText = $header . $summary . $note;
-            $this->telegram->sendMessage($this->summaryChatId, $reportText);
+            $this->telegram->sendMessage($this->summaryChatId, $reportText, 'MarkdownV2');
             if ($this->slack !== null) {
                 $this->slack->sendMessage(strip_tags($reportText));
             }
