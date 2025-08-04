@@ -22,8 +22,9 @@ class DeepseekServiceTest extends TestCase
 
         $md = $method->invoke($service, $data, 'Chat', 1, '2025-01-01');
 
-        $this->assertStringContainsString('Сводка чата: Chat (ID 1) — 2025-01-01', $md);
-        $this->assertStringContainsString('👥 Участники: Алиса — разработчик', $md);
+        $this->assertStringContainsString('- **Chat (ID 1)** — 2025-01-01', $md);
+        $this->assertStringContainsString('  - **Участники**', $md);
+        $this->assertStringContainsString('    - Алиса — разработчик', $md);
     }
 
     public function testJsonToMarkdownHandlesExtraSections(): void
@@ -39,7 +40,8 @@ class DeepseekServiceTest extends TestCase
 
         $md = $method->invoke($service, $data, 'Chat', 1, '2025-01-01');
 
-        $this->assertStringContainsString('📌 Действия: Позвонить клиенту', $md);
+        $this->assertStringContainsString('  - **Действия**', $md);
+        $this->assertStringContainsString('    - Позвонить клиенту', $md);
     }
 
     public function testDecodeJsonHandlesCodeBlock(): void
