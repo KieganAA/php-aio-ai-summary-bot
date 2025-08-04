@@ -91,8 +91,6 @@ class SummarizeCommand extends UserCommand
         }
 
         $repo->markProcessed($targetId, $dayTs);
-        $this->logger->info('Messages marked processed after summarize', ['chat_id' => $targetId]);
-
         $telegram = new TelegramService();
         $response = $telegram->sendMessage(
             $chatId,
