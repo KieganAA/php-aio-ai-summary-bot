@@ -44,4 +44,11 @@ class TextUtilsTest extends TestCase
         $expected = '\\_already escaped\\_ and \\*bold\\*';
         $this->assertSame($expected, TextUtils::escapeMarkdown($input));
     }
+
+    public function testEscapeMarkdownEscapesParentheses(): void
+    {
+        $input = 'Example (test)';
+        $expected = 'Example \\(test\\)';
+        $this->assertSame($expected, TextUtils::escapeMarkdown($input));
+    }
 }

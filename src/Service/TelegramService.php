@@ -7,9 +7,10 @@ use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 use Longman\TelegramBot\Telegram;
-use Src\Config\Config;
 use Psr\Log\LoggerInterface;
+use Src\Config\Config;
 use Src\Service\LoggerService;
+use Src\Util\TextUtils;
 
 class TelegramService
 {
@@ -43,9 +44,21 @@ class TelegramService
         $maxLength = 4096;
         $response = Request::emptyResponse();
 
+        if ($parseMode === 'MarkdownV2') {
+            $text = TextUtils::escapeMarkdown($text);
+        }
+
         $length = mb_strlen($text);
-        for ($offset = 0; $offset < $length; $offset += $maxLength) {
-            $chunk = mb_substr($text, $offset, $maxLength);
+        for ($offset = 0; $offset < $length;) {
+            $take = min($maxLength, $length - $offset);
+            $chunk = mb_substr($text, $offset, $take);
+
+            if ($parseMode === 'MarkdownV2') {
+                while (mb_substr($chunk, -1) === '\\') {
+                    $take--;
+                    $chunk = mb_substr($text, $offset, $take);
+                }
+            }
 
             $params = [
                 'chat_id' => $chatId,
@@ -70,6 +83,8 @@ class TelegramService
                 $this->logger->error('Telegram sendMessage failed: ' . $e->getMessage());
                 break;
             }
+
+            $offset += $take;
         }
 
         return $response;
