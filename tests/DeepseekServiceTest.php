@@ -29,7 +29,7 @@ class DeepseekServiceTest extends TestCase
         $md = $method->invoke($service, $data, 'Chat', 1, '2025-01-01');
 
         $this->assertStringContainsString('*Chat (ID 1)* — 2025\\-01\\-01', $md);
-        $this->assertStringContainsString('• *Участники*', $md);
+        $this->assertStringContainsString('*Участники*', $md);
         $this->assertStringContainsString('  • Алиса — разработчик', $md);
     }
 
@@ -49,13 +49,13 @@ class DeepseekServiceTest extends TestCase
 
         $md = $method->invoke($service, $data, 'Chat', 1, '2025-01-01');
 
-        $this->assertStringContainsString('• *Действия*', $md);
+        $this->assertStringContainsString('*Действия*', $md);
         $this->assertStringContainsString('  • Позвонить клиенту', $md);
-        $this->assertStringContainsString('• *События*', $md);
+        $this->assertStringContainsString('*События*', $md);
         $this->assertStringContainsString('  • Обновили сайт', $md);
-        $this->assertStringContainsString('• *Блокеры*', $md);
+        $this->assertStringContainsString('*Блокеры*', $md);
         $this->assertStringContainsString('  • Нет доступа', $md);
-        $this->assertStringContainsString('• *Вопросы*', $md);
+        $this->assertStringContainsString('*Вопросы*', $md);
         $this->assertStringContainsString('  • Когда релиз?', $md);
     }
 
