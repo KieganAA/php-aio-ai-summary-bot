@@ -276,27 +276,72 @@ PROMPT;
     public function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string
     {
 
-        $sections = [
-            ['emoji' => '💬', 'title' => 'Темы', 'key' => 'topics'],
-            ['emoji' => '⚠️', 'title' => 'Проблемы', 'key' => 'issues'],
-            ['emoji' => '✅', 'title' => 'Решения', 'key' => 'decisions'],
-            ['emoji' => '👥', 'title' => 'Участники', 'key' => 'participants'],
+        $baseSections = [
+            'topics'       => 'Темы',
+            'issues'       => 'Проблемы',
+            'decisions'    => 'Решения',
+            'participants' => 'Участники',
+        ];
+        $extraSections = [
+            'actions'      => 'Действия',
         ];
 
         $lines   = [];
-        $lines[] = "Сводка по чату: {$chatTitle} (ID {$chatId}) — {$date}";
+        $lines[] = "- **{$chatTitle} (ID {$chatId})** — {$date}";
 
-        foreach ($sections as $section) {
-            $items = $data[$section['key']] ?? [];
+        foreach ($baseSections as $key => $title) {
+            $items = $data[$key] ?? [];
             if (is_string($items)) {
                 $items = [$items];
             }
+
+            $lines[] = "  - **{$title}**";
+
             if (!is_array($items) || empty($items)) {
-                $content = 'Нет';
+                $lines[] = '    - Нет';
             } else {
-                $content = implode('; ', $items);
+                foreach ($items as $item) {
+                    $lines[] = '    - ' . $item;
+                }
             }
-            $lines[] = sprintf('%s %s: %s', $section['emoji'], $section['title'], $content);
+        }
+
+        foreach ($extraSections as $key => $title) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            $items = $data[$key];
+            if (is_string($items)) {
+                $items = [$items];
+            }
+            $lines[] = "  - **{$title}**";
+            if (!is_array($items) || empty($items)) {
+                $lines[] = '    - Нет';
+            } else {
+                foreach ($items as $item) {
+                    $lines[] = '    - ' . $item;
+                }
+            }
+        }
+
+        // Append any unknown sections to keep output deterministic
+        $handled = array_merge(array_keys($baseSections), array_keys($extraSections));
+        foreach ($data as $key => $items) {
+            if (in_array($key, $handled, true)) {
+                continue;
+            }
+            if (is_string($items)) {
+                $items = [$items];
+            }
+            $title = ucfirst($key);
+            $lines[] = "  - **{$title}**";
+            if (!is_array($items) || empty($items)) {
+                $lines[] = '    - Нет';
+            } else {
+                foreach ($items as $item) {
+                    $lines[] = '    - ' . $item;
+                }
+            }
         }
 
         return implode("\n", $lines);
