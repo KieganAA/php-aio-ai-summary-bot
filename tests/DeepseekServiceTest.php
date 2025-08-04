@@ -33,11 +33,14 @@ class DeepseekServiceTest extends TestCase
         $this->assertStringContainsString('  • Алиса — разработчик', $md);
     }
 
-    public function testJsonToMarkdownHandlesExtraSections(): void
+    public function testJsonToMarkdownHandlesOptionalSections(): void
     {
         $service = new DeepseekService('key');
         $data = [
             'actions' => ['Позвонить клиенту'],
+            'events' => ['Обновили сайт'],
+            'blockers' => ['Нет доступа'],
+            'questions' => ['Когда релиз?'],
         ];
 
         $ref = new ReflectionClass(DeepseekService::class);
@@ -48,6 +51,12 @@ class DeepseekServiceTest extends TestCase
 
         $this->assertStringContainsString('• *Действия*', $md);
         $this->assertStringContainsString('  • Позвонить клиенту', $md);
+        $this->assertStringContainsString('• *События*', $md);
+        $this->assertStringContainsString('  • Обновили сайт', $md);
+        $this->assertStringContainsString('• *Блокеры*', $md);
+        $this->assertStringContainsString('  • Нет доступа', $md);
+        $this->assertStringContainsString('• *Вопросы*', $md);
+        $this->assertStringContainsString('  • Когда релиз?', $md);
     }
 
     public function testJsonToMarkdownEscapesValues(): void
@@ -79,6 +88,21 @@ class DeepseekServiceTest extends TestCase
         $json = $method->invoke($service, $content);
 
         $this->assertSame(['a' => 1], $json);
+    }
+
+    public function testExtractContentParsesSse(): void
+    {
+        $service = new DeepseekService('key');
+        $raw = "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n" .
+               "data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n" .
+               "data: [DONE]\n";
+
+        $ref = new ReflectionClass(DeepseekService::class);
+        $method = $ref->getMethod('extractContent');
+        $method->setAccessible(true);
+
+        $content = $method->invoke($service, $raw);
+        $this->assertSame('Hello world', $content);
     }
 
     public function testExtractEmployeeContext(): void

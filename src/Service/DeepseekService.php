@@ -93,10 +93,13 @@ class DeepseekService
         $content = '';
         foreach (preg_split("/\r\n|\n|\r/", trim($raw)) as $line) {
             $line = trim($line);
-            if ($line === '' || !str_starts_with($line, 'data:')) {
+            if ($line === '') {
                 continue;
             }
-            $payload = trim(substr($line, 5));
+            if (!preg_match('/^data:\\s*(.+)$/', $line, $m)) {
+                continue;
+            }
+            $payload = trim($m[1]);
             if ($payload === '' || $payload === '[DONE]') {
                 continue;
             }
@@ -291,6 +294,9 @@ PROMPT;
         ];
         $extraSections = [
             'actions'      => 'Действия',
+            'events'       => 'События',
+            'blockers'     => 'Блокеры',
+            'questions'    => 'Вопросы',
         ];
 
         $lines = [];
