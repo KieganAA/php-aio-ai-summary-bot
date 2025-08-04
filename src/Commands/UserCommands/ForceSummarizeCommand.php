@@ -70,16 +70,16 @@ class ForceSummarizeCommand extends UserCommand
         $deepseek = new DeepseekService(Config::get('DEEPSEEK_API_KEY'));
         $chatTitle = $repo->getChatTitle($targetId);
         $dateStr  = date('Y-m-d', $dayTs);
-        $summary   = $deepseek->summarize($cleaned, $chatTitle, $targetId, $dateStr);
-        $json      = json_decode($summary, true);
-        if (!is_array($json) && preg_match('/{.*}/s', $summary, $m)) {
-            $json = json_decode($m[0], true);
+        try {
+            $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, $dateStr);
+            $this->logger->info('Force summary generated', ['chat_id' => $targetId]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Force summary failed', [
+                'chat_id' => $targetId,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->replyToChat('Failed to generate summary, please try again later.');
         }
-        if (is_array($json)) {
-            $summary = $deepseek->jsonToMarkdown($json, $chatTitle, $targetId, $dateStr);
-            $this->logger->info('Summary is valid JSON, decoding', ['summary' => $summary]);
-        }
-        $this->logger->info('Force summary generated', ['chat_id' => $targetId]);
 
         $telegram = new TelegramService();
         $response = $telegram->sendMessage(

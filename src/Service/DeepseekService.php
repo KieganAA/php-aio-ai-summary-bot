@@ -18,6 +18,11 @@ class DeepseekService
 
     public function __construct(string $apiKey)
     {
+        $apiKey = trim($apiKey);
+        if ($apiKey === '') {
+            throw new \InvalidArgumentException('API key must not be empty');
+        }
+
         $this->apiKey = $apiKey;
     }
 
@@ -45,15 +50,14 @@ class DeepseekService
      */
     private function runWithRetries(DeepSeekClient $client, int $maxRetries = 3): string
     {
-        $attempt = 0;
-        while (true) {
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
                 $raw = $client->run();
             } catch (\Throwable $e) {
-                if (++$attempt >= $maxRetries) {
+                if ($attempt + 1 >= $maxRetries) {
                     throw $e;
                 }
-                usleep(250_000); // wait 250ms before retrying
+                usleep((int)(250_000 * (2 ** $attempt)));
                 continue;
             }
 
@@ -61,11 +65,13 @@ class DeepseekService
                 return $raw;
             }
 
-            if (++$attempt >= $maxRetries) {
+            if ($attempt + 1 >= $maxRetries) {
                 throw new \RuntimeException('Cloudflare SSL handshake failed (error 525)');
             }
-            usleep(250_000);
+            usleep((int)(250_000 * (2 ** $attempt)));
         }
+
+        throw new \RuntimeException('Failed to receive valid response from DeepSeek');
     }
 
     /**
