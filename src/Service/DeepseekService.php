@@ -174,10 +174,9 @@ You are ChatChunk-Summarizer-v1.
 Return STRICT JSON only (no prose). Goal: capture what happened in this chat excerpt so it can be merged later.
 
 Rules:
-- Language: English. Style: concise business, past tense.
-- Redact sensitive data as "***".
+- Language: Russian. Style: concise business, past tense.
 - Prefer signal over chatter; ignore greetings, stickers, joins/leaves, images.
-- Each item ≤ 18 words. Max items: participants 10, topics 8, events 10, decisions 8, actions 10, blockers 6, questions 6.
+- Each item ≤ 20 words. Max items: participants 10, topics 8, events 10, decisions 8, actions 10, blockers 6, questions 6.
 - If nothing for a field, output [] or "" (no null).
 - Do not invent facts; use "unknown" when missing.
 - Times: use ISO-8601 local time for DATE and TIMEZONE when explicit, else omit time.
@@ -187,7 +186,7 @@ SYS;
             'chat_title' => $chatTitle,
             'chat_id' => (string)$chatId,
             'date' => $date,
-            'timezone' => 'Europe/Berlin',
+            'timezone' => 'Europe/Moscow',
             'chunk_id' => 'chunk-' . $chunkIndex,
             'transcript' => $chunk,
         ];
@@ -280,14 +279,11 @@ PROMPT;
             ['emoji' => '👥', 'title' => 'Участники', 'key' => 'participants'],
             ['emoji' => '💬', 'title' => 'Темы', 'key' => 'topics'],
             ['emoji' => '⚠️', 'title' => 'Проблемы', 'key' => 'issues'],
-            ['emoji' => '✅', 'title' => 'Решения', 'key' => 'decisions'],
-            ['emoji' => '📌', 'title' => 'Действия', 'key' => 'actions'],
-            ['emoji' => '⛔', 'title' => 'Блокеры', 'key' => 'blockers'],
-            ['emoji' => '❓', 'title' => 'Вопросы', 'key' => 'questions'],
+            ['emoji' => '✅', 'title' => 'Решения', 'key' => 'decisions']
         ];
 
         $lines   = [];
-        $lines[] = "Сводка чата: {$chatTitle} (ID {$chatId}) — {$date}";
+        $lines[] = "Сводка по чату: {$chatTitle} (ID {$chatId}) — {$date}";
 
         foreach ($sections as $section) {
             $items = $data[$section['key']] ?? [];
