@@ -290,7 +290,7 @@ PROMPT;
         $lines = [];
         $titleLine = TextUtils::escapeMarkdown($chatTitle);
         $dateLine  = TextUtils::escapeMarkdown($date);
-        $lines[]   = "- *{$titleLine} (ID {$chatId})* — {$dateLine}";
+        $lines[]   = "*{$titleLine} (ID {$chatId})* — {$dateLine}";
 
         foreach ($baseSections as $key => $title) {
             $items = $data[$key] ?? [];
@@ -298,13 +298,13 @@ PROMPT;
                 $items = [$items];
             }
 
-            $lines[] = "  - *{$title}*";
+            $lines[] = "• *{$title}*";
 
             if (!is_array($items) || empty($items)) {
-                $lines[] = '    - Нет';
+                $lines[] = '  • Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '    - ' . TextUtils::escapeMarkdown((string) $item);
+                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string) $item);
                 }
             }
         }
@@ -317,12 +317,12 @@ PROMPT;
             if (is_string($items)) {
                 $items = [$items];
             }
-            $lines[] = "  - *{$title}*";
+            $lines[] = "• *{$title}*";
             if (!is_array($items) || empty($items)) {
-                $lines[] = '    - Нет';
+                $lines[] = '  • Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '    - ' . TextUtils::escapeMarkdown((string) $item);
+                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string) $item);
                 }
             }
         }
@@ -337,12 +337,12 @@ PROMPT;
                 $items = [$items];
             }
             $sectionTitle = TextUtils::escapeMarkdown(ucfirst($key));
-            $lines[] = "  - *{$sectionTitle}*";
+            $lines[] = "• *{$sectionTitle}*";
             if (!is_array($items) || empty($items)) {
-                $lines[] = '    - Нет';
+                $lines[] = '  • Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '    - ' . TextUtils::escapeMarkdown((string) $item);
+                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string) $item);
                 }
             }
         }
