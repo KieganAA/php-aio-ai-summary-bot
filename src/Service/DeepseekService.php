@@ -300,9 +300,9 @@ PROMPT;
         ];
 
         $lines = [];
-        $titleLine = TextUtils::escapeMarkdown($chatTitle);
-        $dateLine  = TextUtils::escapeMarkdown($date);
-        $lines[]   = "*{$titleLine} (ID {$chatId})* — {$dateLine}";
+        $titleWithId = TextUtils::escapeMarkdown("{$chatTitle} (ID {$chatId})");
+        $dateLine    = TextUtils::escapeMarkdown($date);
+        $lines[]     = "*{$titleWithId}* — {$dateLine}";
 
         foreach ($baseSections as $key => $title) {
             $items = $data[$key] ?? [];
@@ -310,7 +310,8 @@ PROMPT;
                 $items = [$items];
             }
 
-            $lines[] = "• *{$title}*";
+            $sectionTitle = TextUtils::escapeMarkdown($title);
+            $lines[]      = "*{$sectionTitle}*";
 
             if (!is_array($items) || empty($items)) {
                 $lines[] = '  • Нет';
@@ -329,7 +330,8 @@ PROMPT;
             if (is_string($items)) {
                 $items = [$items];
             }
-            $lines[] = "• *{$title}*";
+            $sectionTitle = TextUtils::escapeMarkdown($title);
+            $lines[]      = "*{$sectionTitle}*";
             if (!is_array($items) || empty($items)) {
                 $lines[] = '  • Нет';
             } else {
@@ -349,7 +351,7 @@ PROMPT;
                 $items = [$items];
             }
             $sectionTitle = TextUtils::escapeMarkdown(ucfirst($key));
-            $lines[] = "• *{$sectionTitle}*";
+            $lines[]      = "*{$sectionTitle}*";
             if (!is_array($items) || empty($items)) {
                 $lines[] = '  • Нет';
             } else {

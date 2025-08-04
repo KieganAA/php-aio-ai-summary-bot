@@ -10,7 +10,6 @@ use Longman\TelegramBot\Telegram;
 use Psr\Log\LoggerInterface;
 use Src\Config\Config;
 use Src\Service\LoggerService;
-use Src\Util\TextUtils;
 
 class TelegramService
 {
@@ -43,10 +42,6 @@ class TelegramService
     {
         $maxLength = 4096;
         $response = Request::emptyResponse();
-
-        if ($parseMode === 'MarkdownV2') {
-            $text = TextUtils::escapeMarkdown($text);
-        }
 
         $length = mb_strlen($text);
         for ($offset = 0; $offset < $length;) {

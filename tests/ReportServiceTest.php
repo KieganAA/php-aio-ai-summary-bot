@@ -50,7 +50,7 @@ class ReportServiceTest extends TestCase
 
         $telegram->expects($this->once())
             ->method('sendMessage')
-            ->with(99, "*Report for chat* `1`\n_" . date('Y-m-d', $run) . "_\n\nsummary");
+            ->with(99, "*Report for chat* `1`\n_" . str_replace('-', '\\-', date('Y-m-d', $run)) . "_\n\nsummary", 'MarkdownV2');
 
         $repo->expects($this->once())
             ->method('markProcessed')
@@ -107,7 +107,7 @@ class ReportServiceTest extends TestCase
 
         $telegram->expects($this->once())
             ->method('sendMessage')
-            ->with(99, $this->stringContains('Active conversation about: topic'));
+            ->with(99, $this->stringContains('Active conversation about: topic'), 'MarkdownV2');
 
         $repo->expects($this->once())
             ->method('markProcessed')
