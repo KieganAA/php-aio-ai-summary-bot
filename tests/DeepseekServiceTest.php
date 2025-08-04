@@ -28,6 +28,7 @@ class DeepseekServiceTest extends TestCase
 
         $md = $method->invoke($service, $data, 'Chat', 1, '2025-01-01');
 
+
         $this->assertStringContainsString('*Chat \(ID 1\)* — 2025\\-01\\-01', $md);
         $this->assertStringContainsString('*Участники*', $md);
         $this->assertStringContainsString('  • Алиса — разработчик', $md);
