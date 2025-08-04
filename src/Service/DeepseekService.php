@@ -286,30 +286,20 @@ PROMPT;
             ['emoji' => '❓', 'title' => 'Вопросы', 'key' => 'questions'],
         ];
 
-        $lines = [];
-        $lines[] = '# Сводка чата';
-        $lines[] = '';
-        $lines[] = "Chat: {$chatTitle} (ID {$chatId})";
-        $lines[] = "Date: {$date}";
-        $lines[] = '';
+        $lines   = [];
+        $lines[] = "Сводка чата: {$chatTitle} (ID {$chatId}) — {$date}";
 
-        $num = 1;
         foreach ($sections as $section) {
-            $lines[] = sprintf('%d. %s  %s', $num, $section['emoji'], $section['title']);
-            $lines[] = '';
             $items = $data[$section['key']] ?? [];
             if (is_string($items)) {
                 $items = [$items];
             }
             if (!is_array($items) || empty($items)) {
-                $lines[] = '  - Нет';
+                $content = 'Нет';
             } else {
-                foreach ($items as $item) {
-                    $lines[] = '  - ' . $item;
-                }
+                $content = implode('; ', $items);
             }
-            $lines[] = '';
-            $num++;
+            $lines[] = sprintf('%s %s: %s', $section['emoji'], $section['title'], $content);
         }
 
         return implode("\n", $lines);
