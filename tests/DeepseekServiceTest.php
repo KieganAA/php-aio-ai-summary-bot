@@ -22,8 +22,8 @@ class DeepseekServiceTest extends TestCase
 
         $md = $method->invoke($service, $data, 'Chat', 1, '2025-01-01');
 
-        $this->assertStringContainsString('- **Chat (ID 1)** — 2025-01-01', $md);
-        $this->assertStringContainsString('  - **Участники**', $md);
+        $this->assertStringContainsString('- *Chat (ID 1)* — 2025\\-01\\-01', $md);
+        $this->assertStringContainsString('  - *Участники*', $md);
         $this->assertStringContainsString('    - Алиса — разработчик', $md);
     }
 
@@ -40,8 +40,25 @@ class DeepseekServiceTest extends TestCase
 
         $md = $method->invoke($service, $data, 'Chat', 1, '2025-01-01');
 
-        $this->assertStringContainsString('  - **Действия**', $md);
+        $this->assertStringContainsString('  - *Действия*', $md);
         $this->assertStringContainsString('    - Позвонить клиенту', $md);
+    }
+
+    public function testJsonToMarkdownEscapesValues(): void
+    {
+        $service = new DeepseekService('key');
+        $data = [
+            'topics' => ['Need _attention_ and *fix*'],
+        ];
+
+        $ref = new ReflectionClass(DeepseekService::class);
+        $method = $ref->getMethod('jsonToMarkdown');
+        $method->setAccessible(true);
+
+        $md = $method->invoke($service, $data, 'Chat_', 1, '2025-01-01');
+
+        $this->assertStringContainsString('- *Chat\_ (ID 1)* — 2025\-01\-01', $md);
+        $this->assertStringContainsString('Need \\_attention\\_ and \\*fix\\*', $md);
     }
 
     public function testDecodeJsonHandlesCodeBlock(): void

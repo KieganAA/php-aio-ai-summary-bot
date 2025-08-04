@@ -6,6 +6,7 @@ namespace Src\Service;
 use DeepSeek\DeepSeekClient;
 use GuzzleHttp\Client as HttpClient;
 use Src\Util\TokenCounter;
+use Src\Util\TextUtils;
 
 /**
  * Wrapper around the DeepSeek client that provides a map‑reduce
@@ -247,7 +248,7 @@ PROMPT;
         $content = $this->extractContent($raw);
         $json = $this->decodeJson($content);
         if ($json === null) {
-            return $content;
+            return TextUtils::escapeMarkdown($content);
         }
 
         return $this->jsonToMarkdown($json, $chatTitle, $chatId, $date);
@@ -286,8 +287,10 @@ PROMPT;
             'actions'      => 'Действия',
         ];
 
-        $lines   = [];
-        $lines[] = "- **{$chatTitle} (ID {$chatId})** — {$date}";
+        $lines = [];
+        $titleLine = TextUtils::escapeMarkdown($chatTitle);
+        $dateLine  = TextUtils::escapeMarkdown($date);
+        $lines[]   = "- *{$titleLine} (ID {$chatId})* — {$dateLine}";
 
         foreach ($baseSections as $key => $title) {
             $items = $data[$key] ?? [];
@@ -295,13 +298,13 @@ PROMPT;
                 $items = [$items];
             }
 
-            $lines[] = "  - **{$title}**";
+            $lines[] = "  - *{$title}*";
 
             if (!is_array($items) || empty($items)) {
                 $lines[] = '    - Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '    - ' . $item;
+                    $lines[] = '    - ' . TextUtils::escapeMarkdown((string) $item);
                 }
             }
         }
@@ -314,12 +317,12 @@ PROMPT;
             if (is_string($items)) {
                 $items = [$items];
             }
-            $lines[] = "  - **{$title}**";
+            $lines[] = "  - *{$title}*";
             if (!is_array($items) || empty($items)) {
                 $lines[] = '    - Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '    - ' . $item;
+                    $lines[] = '    - ' . TextUtils::escapeMarkdown((string) $item);
                 }
             }
         }
@@ -333,13 +336,13 @@ PROMPT;
             if (is_string($items)) {
                 $items = [$items];
             }
-            $title = ucfirst($key);
-            $lines[] = "  - **{$title}**";
+            $sectionTitle = TextUtils::escapeMarkdown(ucfirst($key));
+            $lines[] = "  - *{$sectionTitle}*";
             if (!is_array($items) || empty($items)) {
                 $lines[] = '    - Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '    - ' . $item;
+                    $lines[] = '    - ' . TextUtils::escapeMarkdown((string) $item);
                 }
             }
         }
@@ -353,7 +356,7 @@ PROMPT;
         $prompt = "Summarize in no more than 30 words what the chat messages are about:\n" . $transcript;
         $client->setTemperature(0.2)->query($prompt, 'user');
         $raw = $this->runWithRetries($client);
-        return trim($this->extractContent($raw));
+        return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
     }
 
     public function summarize(
