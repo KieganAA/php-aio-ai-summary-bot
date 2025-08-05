@@ -30,7 +30,7 @@ class ReportService
             return null;
         }
 
-        $transcript = TextUtils::cleanTranscript(TextUtils::buildTranscript($msgs));
+        $transcript = TextUtils::buildCleanTranscript($msgs);
         $msgCount   = count($msgs);
         $users      = array_column($msgs, 'from_user');
         $userCount  = count(array_unique($users));
@@ -87,7 +87,7 @@ class ReportService
         $lastMsgTs = $msgs[count($msgs) - 1]['message_date'];
         if ($now - $lastMsgTs < 3600) {
             $recent = array_slice($msgs, -5);
-            $recentTranscript = TextUtils::cleanTranscript(TextUtils::buildTranscript($recent));
+            $recentTranscript = TextUtils::buildCleanTranscript($recent);
             try {
                 $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
                 $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";

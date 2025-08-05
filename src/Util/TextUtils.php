@@ -39,6 +39,14 @@ class TextUtils
     }
 
     /**
+     * Build a transcript from messages and apply cleanup rules.
+     */
+    public static function buildCleanTranscript(array $messages): string
+    {
+        return self::cleanTranscript(self::buildTranscript($messages));
+    }
+
+    /**
      * Escape a string for safe use with Telegram MarkdownV2.
      *
      * Ported from the telegramify-markdown project to ensure proper
