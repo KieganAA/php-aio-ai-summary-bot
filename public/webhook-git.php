@@ -8,9 +8,11 @@ $projectRoot = realpath(__DIR__ . '/..');
 Config::load($projectRoot . '/');
 $logger = LoggerService::getLogger();
 
-$deployUser = Config::get('DEPLOY_USER'); // optional user to run shell commands as
-$wrapCommand = static function (string $cmd) use ($deployUser): string {
-    if ($deployUser !== '') {
+$currentUser = function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid())["name"] ?? '' : '';
+$repoOwner = function_exists('posix_getpwuid') ? posix_getpwuid(fileowner($projectRoot . '/.git'))["name"] ?? '' : '';
+$deployUser = Config::get('DEPLOY_USER') ?: $repoOwner; // run commands as repo owner by default
+$wrapCommand = static function (string $cmd) use ($deployUser, $currentUser): string {
+    if ($deployUser !== '' && $deployUser !== $currentUser) {
         return 'sudo -u ' . escapeshellarg($deployUser) . ' sh -c ' . escapeshellarg($cmd);
     }
     return $cmd;
