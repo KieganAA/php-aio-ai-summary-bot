@@ -107,7 +107,7 @@ class ReportServiceTest extends TestCase
 
         $telegram->expects($this->once())
             ->method('sendMessage')
-            ->with(99, $this->stringContains('Active conversation about: topic'), 'MarkdownV2');
+            ->with(99, $this->stringContains('Сейчас обсуждают: topic'), 'MarkdownV2');
 
         $repo->expects($this->once())
             ->method('markProcessed')
