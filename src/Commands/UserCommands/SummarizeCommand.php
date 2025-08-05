@@ -29,18 +29,17 @@ class SummarizeCommand extends UserCommand
     public function execute(): ServerResponse
     {
         $chatId = $this->getMessage()->getChat()->getId();
-        $this->logger->info('Summarize command triggered', ['chat_id' => $chatId]);
+        $user = $this->getMessage()->getFrom()->getUsername();
+        $this->logger->info('Summarize command triggered', ['chat_id' => $chatId, 'user' => $user]);
 
         try {
             $conn = Database::getConnection($this->logger);
             $repo = new DbalMessageRepository($conn, $this->logger);
 
             $keyboard = new InlineKeyboard([]);
-            $this->logger->info('Creating keyboard', ['chat_id' => $chatId]);
             foreach ($repo->listChats() as $chat) {
                 $label = trim(($chat['title'] ?? '') . ' (' . $chat['id'] . ')');
                 $keyboard->addRow(['text' => $label, 'callback_data' => 'sum_c_' . $chat['id']]);
-                $this->logger->info('Adding keyboard rows', ['chat_id' => $chat]);
             }
 
             return Request::sendMessage([
