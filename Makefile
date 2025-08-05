@@ -7,7 +7,7 @@ daily-report:
 	php bin/console app:daily-report
 
 daily-digest:
-	@echo "Running DailyReport Command"
+	@echo "Running DailyDigest Command"
 	php bin/console app:daily-digest
 
 list-chats:
