@@ -17,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Method Not Allowed');
 }
 
+// test
+
 // Validate signature
 $secret = Config::get('GIT_SECRET');
 $headers = getallheaders();
