@@ -1,6 +1,5 @@
 /vendor
 /.idea
 .env
-Makefile
 logs/
 .phpunit.result.cache
