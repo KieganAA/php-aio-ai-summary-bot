@@ -1,8 +1,9 @@
 # Load .env file if it exists
 ifneq (,$(wildcard .env))
-include .env
-export $(shell sed 's/=.*//' .env)
+	include .env
+	export $(shell sed 's/=.*//' .env)
 endif
+
 
 chat-report:
 	@echo "Running ChatReport Command"
@@ -34,12 +35,12 @@ tunnel:
 webhook-local:
 	@echo "Setting Telegram webhook..."
 	curl -F "url=$(NGROK_URL)/index.php" \
-	"https://api.telegram.org/bot$(TELEGRAM_BOT_TOKEN)/setWebhook"
+		"https://api.telegram.org/bot$(TELEGRAM_BOT_TOKEN)/setWebhook"
 
 webhook:
 	@echo "Setting Telegram webhook..."
 	curl -F "url=$(WEBHOOK_URL)/index.php" \
-	"https://api.telegram.org/bot$(TELEGRAM_BOT_TOKEN)/setWebhook"
+		"https://api.telegram.org/bot$(TELEGRAM_BOT_TOKEN)/setWebhook"
 
 # Clear Telegram webhook
 webhook-clear:
