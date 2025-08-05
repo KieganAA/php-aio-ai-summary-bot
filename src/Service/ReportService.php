@@ -154,7 +154,8 @@ class ReportService
         $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
         $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
         $header = "*Дневной дайджест*\n_{$dateLine}_\n\n" . $statsLine;
-        $text     = $header . $digest;
+        $body   = "```json\n{$digest}\n```";
+        $text   = $header . $body;
         $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
         if ($this->slack !== null) {
             $this->slack->sendMessage(strip_tags($text));

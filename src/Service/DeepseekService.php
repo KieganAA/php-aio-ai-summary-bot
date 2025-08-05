@@ -409,20 +409,29 @@ PROMPT;
     public function summarizeReports(array $reports, string $date): string
     {
         $client = $this->client();
-        $input = implode("\n\n", $reports);
-        $prompt = <<<PROMPT
-Вы — DailyReportsAggregator-v2.
-Проанализируй все отчеты за {$date} и подготовь финальный сводный digest на русском языке.
-В ответе:
-- выдели ключевые темы, риски и достижения;
-- предложи возможные дальнейшие шаги;
-- используй краткий маркированный список Markdown.
+        $system = <<<SYS
+Вы — ChatC-LevelDigest-v1.
+Цель: выдать КОМПАКТНЫЙ JSON-отчёт о состоянии клиентских чатов (для топ-менеджеров).
+• Пиши ТОЛЬКО JSON, никаких пояснений.
+• Язык: русский. Каждый элемент ≤ 20 слов.
+• Не пытайся определять ответственных или статус задач.
+• Игнорируй приветствия, стикеры, «спасибо».
+• Используй только информацию из chat_summaries, не выдумывай и не предлагай решений.
+• Если данных нет — верни [] или "".
+SYS;
 
-Отчеты:
-{$input}
-PROMPT;
-        $client->setTemperature(0.2)->query($prompt, 'user');
+        $payload = [
+            'date' => $date,
+            'chat_summaries' => $reports,
+        ];
+
+        $client
+            ->setTemperature(0.2)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
         $raw = $this->runWithRetries($client);
-        return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
+        return trim($this->extractContent($raw));
     }
 }
