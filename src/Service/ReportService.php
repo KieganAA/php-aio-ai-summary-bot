@@ -6,7 +6,6 @@ namespace Src\Service;
 use Psr\Log\LoggerInterface;
 use Src\Repository\MessageRepositoryInterface;
 use Src\Util\TextUtils;
-use Src\Service\ClassicReportGenerator;
 
 class ReportService
 {
@@ -153,8 +152,8 @@ class ReportService
             return;
         }
         $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
-        $statsLine = '`Total messages`: ' . $totalMessages . ' \\| `Participants`: ' . count($allUsers) . "\n\n";
-        $header   = "*Daily digest*\n_{$dateLine}_\n\n" . $statsLine;
+        $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
+        $header = "*Дневной дайджест*\n_{$dateLine}_\n\n" . $statsLine;
         $text     = $header . $digest;
         $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
         if ($this->slack !== null) {
