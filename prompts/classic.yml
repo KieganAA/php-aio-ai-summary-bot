@@ -1,0 +1,7 @@
+system: |
+  Вы — ChatSummariser-v2.
+user: |
+  CHAT_TITLE: {{ chat_title }}
+  DATE: {{ date }}
+  TRANSCRIPT:
+  {{ transcript }}
