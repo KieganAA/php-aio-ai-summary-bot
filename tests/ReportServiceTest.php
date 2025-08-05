@@ -8,6 +8,8 @@ use Src\Service\DeepseekService;
 use Src\Service\TelegramService;
 use Src\Service\SlackService;
 use Src\Service\NotionService;
+use Src\Service\ReportGeneratorFactory;
+use Src\Service\ReportGeneratorInterface;
 
 class ReportServiceTest extends TestCase
 {
@@ -18,6 +20,14 @@ class ReportServiceTest extends TestCase
         $telegram = $this->createMock(TelegramService::class);
         $slack = $this->createMock(SlackService::class);
         $notion = $this->createMock(NotionService::class);
+        $factory = $this->createMock(ReportGeneratorFactory::class);
+        $factory = $this->createMock(ReportGeneratorFactory::class);
+        $generator = $this->createMock(ReportGeneratorInterface::class);
+        $generator->expects($this->once())
+            ->method('summarize')
+            ->willReturn('summary');
+        $factory = $this->createMock(ReportGeneratorFactory::class);
+        $factory->method('create')->with('classic')->willReturn($generator);
 
         $run = strtotime('2025-07-31 04:00:00');
 
@@ -42,10 +52,7 @@ class ReportServiceTest extends TestCase
             ->willReturn('My Chat');
 
         $transcript = "[u @ 01:00] hi\n[v @ 02:00] there";
-        $deepseek->expects($this->once())
-            ->method('summarize')
-            ->with($transcript, 'My Chat', 1, date('Y-m-d', $run))
-            ->willReturn('summary');
+        $deepseek->expects($this->never())->method('summarize');
         $deepseek->expects($this->never())->method('summarizeTopic');
 
         $telegram->expects($this->once())
@@ -71,7 +78,7 @@ class ReportServiceTest extends TestCase
         $notion->expects($this->once())
             ->method('addReport');
 
-        $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion);
+        $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion, $factory);
         $service->runDailyReports($run);
     }
 
@@ -80,6 +87,10 @@ class ReportServiceTest extends TestCase
         $repo = $this->createMock(MessageRepositoryInterface::class);
         $deepseek = $this->createMock(DeepseekService::class);
         $telegram = $this->createMock(TelegramService::class);
+        $generator = $this->createMock(ReportGeneratorInterface::class);
+        $generator->method('summarize')->willReturn('summary');
+        $factory = $this->createMock(ReportGeneratorFactory::class);
+        $factory->method('create')->with('classic')->willReturn($generator);
 
         $run = strtotime('2025-07-31 02:30:00');
 
@@ -104,10 +115,7 @@ class ReportServiceTest extends TestCase
             ->willReturn('My Chat');
 
         $transcript = "[u @ 01:30] earlier\n[v @ 02:00] latest topic";
-        $deepseek->expects($this->once())
-            ->method('summarize')
-            ->with($transcript, 'My Chat', 1, date('Y-m-d', $run))
-            ->willReturn('summary');
+        $deepseek->expects($this->never())->method('summarize');
 
         $deepseek->expects($this->once())
             ->method('summarizeTopic')
@@ -122,7 +130,7 @@ class ReportServiceTest extends TestCase
             ->method('markProcessed')
             ->with(1, $run);
 
-        $service = new ReportService($repo, $deepseek, $telegram, 99);
+        $service = new ReportService($repo, $deepseek, $telegram, 99, null, null, $factory);
         $service->runDailyReports($run);
     }
 
@@ -133,6 +141,7 @@ class ReportServiceTest extends TestCase
         $telegram = $this->createMock(TelegramService::class);
         $slack = $this->createMock(SlackService::class);
         $notion = $this->createMock(NotionService::class);
+        $factory = $this->createMock(ReportGeneratorFactory::class);
 
         $day = strtotime('2025-07-31');
 
@@ -146,13 +155,13 @@ class ReportServiceTest extends TestCase
             ->with(2, $day)
             ->willReturn([]);
 
-        $deepseek->expects($this->never())->method('summarize');
+        $factory->expects($this->never())->method('create');
         $telegram->expects($this->never())->method('sendMessage');
         $slack->expects($this->never())->method('sendMessage');
         $notion->expects($this->never())->method('addReport');
         $repo->expects($this->never())->method('markProcessed');
 
-        $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion);
+        $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion, $factory);
         $service->runDailyReports($day);
     }
 
