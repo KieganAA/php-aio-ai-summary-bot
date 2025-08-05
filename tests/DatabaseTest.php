@@ -34,4 +34,15 @@ class DatabaseTest extends TestCase
 
         $this->assertSame('', $repo->getChatTitle(1));
     }
+
+    public function testResetAllProcessed(): void
+    {
+        $repo = new DbalMessageRepository($this->conn, new NullLogger());
+        $now = time();
+        $repo->add(1, ['message_id' => 10, 'from' => ['username' => 'u'], 'date' => $now, 'text' => 'hello']);
+        $repo->markProcessed(1, $now);
+        $this->assertCount(0, $repo->getMessagesForChat(1, $now));
+        $repo->resetAllProcessed();
+        $this->assertCount(1, $repo->getMessagesForChat(1, $now));
+    }
 }
