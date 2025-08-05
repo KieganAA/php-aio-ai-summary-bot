@@ -5,8 +5,8 @@ namespace Src\Service;
 
 use DeepSeek\DeepSeekClient;
 use GuzzleHttp\Client as HttpClient;
-use Src\Util\TokenCounter;
 use Src\Util\TextUtils;
+use Src\Util\TokenCounter;
 
 /**
  * Wrapper around the DeepSeek client that provides a map‑reduce
@@ -367,7 +367,8 @@ PROMPT;
     public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
     {
         $client = $this->client();
-        $prompt = "Summarize in no more than 30 words what the chat messages are about:\n" . $transcript;
+        // $prompt = "Summarize in no more than 30 words what the chat messages are about:\n" . $transcript;
+        $prompt = "Кратко суммируй, используя не больще 30 слов о чем были сообщения:\n" . $transcript;
         $client->setTemperature(0.2)->query($prompt, 'user');
         $raw = $this->runWithRetries($client);
         return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));

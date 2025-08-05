@@ -6,6 +6,7 @@ namespace Src\Commands\UserCommands;
 use Longman\TelegramBot\Commands\UserCommand;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\ServerResponse;
+use Longman\TelegramBot\Request;
 use Psr\Log\LoggerInterface;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\Database;
@@ -16,7 +17,7 @@ class SummarizeCommand extends UserCommand
     protected $name = 'summarize';
     protected $description = 'On‑demand summary of chat';
     protected $usage = '/summarize';
-    protected $version = '1.1.0';
+    protected $version = '1.2.0';
     private LoggerInterface $logger;
 
     public function __construct(...$args)
@@ -34,12 +35,16 @@ class SummarizeCommand extends UserCommand
         $repo = new DbalMessageRepository($conn, $this->logger);
 
         $keyboard = new InlineKeyboard();
+        $this->logger->info('Creating keyboard', ['chat_id' => $chatId]);
         foreach ($repo->listChats() as $chat) {
             $label = trim(($chat['title'] ?? '') . ' (' . $chat['id'] . ')');
             $keyboard->addRow(['text' => $label, 'callback_data' => 'sum_c_' . $chat['id']]);
+            $this->logger->info('Adding keyboard rows', ['chat_id' => $chat]);
         }
 
-        return $this->replyToChat('Select chat to summarize:', [
+        return Request::sendMessage([
+            'chat_id' => $chatId,
+            'text' => 'Select chat to summarize:',
             'reply_markup' => $keyboard,
         ]);
     }
