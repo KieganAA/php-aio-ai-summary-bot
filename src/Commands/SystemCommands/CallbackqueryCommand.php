@@ -68,9 +68,10 @@ class CallbackqueryCommand extends SystemCommand
         if (preg_match('/^sum_d_(\-?\d+)_(\d{4}-\d{2}-\d{2})$/', $data, $m)) {
             $targetChatId = (int)$m[1];
             $dateStr = $m[2];
-            Request::editMessageReplyMarkup([
+            Request::editMessageText([
                 'chat_id' => $chatId,
                 'message_id' => $message->getMessageId(),
+                'text' => 'Generating report...',
                 'reply_markup' => new InlineKeyboard([]),
             ]);
             $response = $this->summarizeChat($repo, $targetChatId, $dateStr, $chatId);
