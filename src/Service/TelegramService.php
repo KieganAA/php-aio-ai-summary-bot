@@ -38,7 +38,7 @@ class TelegramService
      * messages are split into multiple chunks and sent sequentially. The
      * method returns the response of the last chunk sent.
      */
-    public function sendMessage(int $chatId, string $text, string $parseMode = 'Markdown'): ServerResponse
+    public function sendMessage(int $chatId, string $text, string $parseMode = 'Markdown', array $extra = []): ServerResponse
     {
         $maxLength = 4096;
         $response = Request::emptyResponse();
@@ -55,10 +55,10 @@ class TelegramService
                 }
             }
 
-            $params = [
+            $params = array_merge([
                 'chat_id' => $chatId,
-                'text' => $chunk,
-            ];
+                'text'   => $chunk,
+            ], $extra);
             if ($parseMode !== '') {
                 $params['parse_mode'] = $parseMode;
             }
