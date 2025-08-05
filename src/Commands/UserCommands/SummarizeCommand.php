@@ -17,7 +17,7 @@ class SummarizeCommand extends UserCommand
     protected $name = 'summarize';
     protected $description = 'On‑demand summary of chat';
     protected $usage = '/summarize';
-    protected $version = '1.2.0';
+    protected $version = '1.3.0';
     private LoggerInterface $logger;
 
     public function __construct(...$args)
