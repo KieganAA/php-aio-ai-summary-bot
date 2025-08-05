@@ -16,6 +16,12 @@ use Src\BotHandle;
 use Src\Service\LoggerService;
 
 $logger = LoggerService::getLogger();
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    exit('Method Not Allowed');
+}
+
 try {
     BotHandle::run();
 } catch (TelegramException $e) {
