@@ -15,7 +15,7 @@ class ChatReportCommandTest extends TestCase
         $report = $this->createMock(ReportService::class);
         $report->expects($this->once())
             ->method('runReportForChat')
-            ->with(123, $this->isType('int'));
+            ->with(123, $this->isType('int'), 'classic');
 
         $command = new ChatReportCommand($report, new NullLogger());
         $application = new Application();
@@ -23,6 +23,22 @@ class ChatReportCommandTest extends TestCase
 
         $tester = new CommandTester($application->find('app:chat-report'));
         $tester->execute(['chat' => '123']);
+        $tester->assertCommandIsSuccessful();
+    }
+
+    public function testRunsReportServiceWithStyle(): void
+    {
+        $report = $this->createMock(ReportService::class);
+        $report->expects($this->once())
+            ->method('runReportForChat')
+            ->with(123, $this->isType('int'), 'executive');
+
+        $command = new ChatReportCommand($report, new NullLogger());
+        $application = new Application();
+        $application->add($command);
+
+        $tester = new CommandTester($application->find('app:chat-report'));
+        $tester->execute(['chat' => '123', '--style' => 'executive']);
         $tester->assertCommandIsSuccessful();
     }
 }

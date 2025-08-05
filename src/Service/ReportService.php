@@ -6,6 +6,7 @@ namespace Src\Service;
 use Psr\Log\LoggerInterface;
 use Src\Repository\MessageRepositoryInterface;
 use Src\Util\TextUtils;
+use Src\Service\ClassicReportGenerator;
 
 class ReportService
 {
@@ -18,11 +19,12 @@ class ReportService
         private int                        $summaryChatId,
         private ?SlackService              $slack = null,
         private ?NotionService             $notion = null,
+        private ?ReportGeneratorFactory    $factory = null,
     ) {
         $this->logger = LoggerService::getLogger();
     }
 
-    private function generateSummary(int $chatId, int $now): ?array
+    private function generateSummary(int $chatId, int $now, string $style): ?array
     {
         $msgs = $this->repo->getMessagesForChat($chatId, $now);
         if (empty($msgs)) {
@@ -37,13 +39,13 @@ class ReportService
         arsort($topUsers);
         $topUsers   = array_slice(array_keys($topUsers), 0, 3);
         $chatTitle  = $this->repo->getChatTitle($chatId);
+        $generator = $this->factory?->create($style) ?? new ClassicReportGenerator($this->deepseek);
         try {
-            $summary = $this->deepseek->summarize(
-                $transcript,
-                $chatTitle,
-                $chatId,
-                date('Y-m-d', $now)
-            );
+            $summary = $generator->summarize($transcript, [
+                'chat_title' => $chatTitle,
+                'chat_id'    => $chatId,
+                'date'       => date('Y-m-d', $now),
+            ]);
         } catch (\Throwable $e) {
             $this->logger->error('Failed to generate summary', [
                 'chat_id' => $chatId,
@@ -72,9 +74,9 @@ class ReportService
         }
     }
 
-    public function runReportForChat(int $chatId, int $now): void
+    public function runReportForChat(int $chatId, int $now, string $style = 'classic'): void
     {
-        $data = $this->generateSummary($chatId, $now);
+        $data = $this->generateSummary($chatId, $now, $style);
         if ($data === null) {
             return;
         }
@@ -125,7 +127,7 @@ class ReportService
         $totalMessages = 0;
         $allUsers      = [];
         foreach ($this->repo->listActiveChats($now) as $chatId) {
-            $data = $this->generateSummary($chatId, $now);
+            $data = $this->generateSummary($chatId, $now, 'classic');
             if ($data === null) {
                 continue;
             }
