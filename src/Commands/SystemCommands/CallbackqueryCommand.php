@@ -123,7 +123,8 @@ class CallbackqueryCommand extends SystemCommand
 
         $msgs = $repo->getMessagesForChat($targetId, $dayTs);
         if (empty($msgs)) {
-            return $this->replyToChat('No messages to summarize yet.');
+            $telegram = new TelegramService($this->logger);
+            return $telegram->sendMessage($replyChatId, 'No messages to summarize yet.');
         }
 
         $raw = TextUtils::buildTranscript($msgs);

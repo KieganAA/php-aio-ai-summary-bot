@@ -8,6 +8,9 @@ use Psr\Log\LoggerInterface;
 
 class DbalMessageRepository implements MessageRepositoryInterface
 {
+    /** @var array<int,string> */
+    private array $titleCache = [];
+
     public function __construct(private Connection $conn, private LoggerInterface $logger)
     {
     }
@@ -96,8 +99,12 @@ class DbalMessageRepository implements MessageRepositoryInterface
 
     public function getChatTitle(int $chatId): string
     {
-        $row = $this->conn->fetchAssociative('SELECT title FROM chats WHERE id = ?', [$chatId]);
-        $this->logger->info('Chat title fetched', ['chat_id' => $chatId]);
-        return $row['title'] ?? '';
+        if (!array_key_exists($chatId, $this->titleCache)) {
+            $row = $this->conn->fetchAssociative('SELECT title FROM chats WHERE id = ?', [$chatId]);
+            $this->titleCache[$chatId] = $row['title'] ?? '';
+            $this->logger->info('Chat title fetched', ['chat_id' => $chatId]);
+        }
+
+        return $this->titleCache[$chatId];
     }
 }
