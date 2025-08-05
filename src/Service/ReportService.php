@@ -3,12 +3,9 @@ declare(strict_types=1);
 
 namespace Src\Service;
 
-use Src\Repository\MessageRepositoryInterface;
-use Src\Service\LoggerService;
 use Psr\Log\LoggerInterface;
+use Src\Repository\MessageRepositoryInterface;
 use Src\Util\TextUtils;
-use Src\Service\SlackService;
-use Src\Service\NotionService;
 
 class ReportService
 {
@@ -64,7 +61,7 @@ class ReportService
             $recentTranscript = TextUtils::cleanTranscript(TextUtils::buildTranscript($recent));
             try {
                 $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
-                $note = "\n\n⚠️ Active conversation about: {$topic}";
+                $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";
             } catch (\Throwable $e) {
                 $this->logger->error('Failed to summarise active conversation', [
                     'chat_id' => $chatId,
