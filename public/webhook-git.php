@@ -4,9 +4,17 @@ require __DIR__ . '/../vendor/autoload.php';
 use Src\Config\Config;
 use Src\Service\LoggerService;
 
-$projectRoot = '/var/www/summary-bot';
+$projectRoot = realpath(__DIR__ . '/..');
 Config::load($projectRoot . '/');
 $logger = LoggerService::getLogger();
+
+$deployUser = Config::get('DEPLOY_USER'); // optional user to run shell commands as
+$wrapCommand = static function (string $cmd) use ($deployUser): string {
+    if ($deployUser !== '') {
+        return 'sudo -u ' . escapeshellarg($deployUser) . ' sh -c ' . escapeshellarg($cmd);
+    }
+    return $cmd;
+};
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -34,7 +42,7 @@ $baseCmd = 'cd ' . escapeshellarg($projectRoot) . ' && ';
 // Pull latest changes from the repository
 $gitOutput = [];
 $gitStatus = null;
-exec($baseCmd . 'git pull origin master 2>&1', $gitOutput, $gitStatus);
+exec($wrapCommand($baseCmd . 'git pull origin master 2>&1'), $gitOutput, $gitStatus);
 if ($gitStatus !== 0) {
     $logger->error('Git pull failed', ['output' => $gitOutput, 'status' => $gitStatus]);
     http_response_code(500);
@@ -44,7 +52,7 @@ if ($gitStatus !== 0) {
 // Install Composer dependencies
 $composerOutput = [];
 $composerStatus = null;
-exec($baseCmd . '/usr/bin/env composer install --no-interaction --no-progress 2>&1', $composerOutput, $composerStatus);
+exec($wrapCommand($baseCmd . '/usr/bin/env composer install --no-interaction --no-progress 2>&1'), $composerOutput, $composerStatus);
 if ($composerStatus !== 0) {
     $logger->error('Composer install failed', ['output' => $composerOutput, 'status' => $composerStatus]);
     http_response_code(500);
