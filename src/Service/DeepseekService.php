@@ -231,7 +231,7 @@ SYS;
 ### Система
 Вы — "ChatSummariser-v2".
 Вам нужно кратко суммировать отрывок чата Telegram в компактный JSON-объект.
-Не добавляйте текст вне JSON. Язык: русский. До 20 слов на пункт.
+Не добавляйте текст вне JSON. Язык: только русский. До 20 слов на пункт.
 
 ### Участники
 Наши сотрудники: {$our}
@@ -368,7 +368,7 @@ PROMPT;
     {
         $client = $this->client();
         // $prompt = "Summarize in no more than 30 words what the chat messages are about:\n" . $transcript;
-        $prompt = "Кратко суммируй, используя не больще 30 слов о чем были сообщения:\n" . $transcript;
+        $prompt = "Кратко суммируй на русском языке, используя не больше 30 слов - о чем были сообщения:\n" . $transcript;
         $client->setTemperature(0.2)->query($prompt, 'user');
         $raw = $this->runWithRetries($client);
         return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
