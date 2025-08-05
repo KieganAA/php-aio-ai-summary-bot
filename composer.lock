@@ -4,7 +4,7 @@
     "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
     "This file is @generated automatically"
   ],
-  "content-hash": "11e7f3e1224de36bc3b3f0da1ed4d56c",
+  "content-hash": "50e57389c2d907f6690c28f427a4a3b5",
   "packages": [
     {
       "name": "deepseek-php/deepseek-php-client",
@@ -4595,7 +4595,8 @@
   "platform": {
     "php": ">=8.0",
     "ext-pdo": "*",
-    "ext-curl": "*"
+    "ext-curl": "*",
+    "ext-calendar": "*"
   },
   "platform-dev": {},
   "plugin-api-version": "2.6.0"

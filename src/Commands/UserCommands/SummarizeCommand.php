@@ -31,22 +31,30 @@ class SummarizeCommand extends UserCommand
         $chatId = $this->getMessage()->getChat()->getId();
         $this->logger->info('Summarize command triggered', ['chat_id' => $chatId]);
 
-        $conn = Database::getConnection($this->logger);
-        $repo = new DbalMessageRepository($conn, $this->logger);
+        try {
+            $conn = Database::getConnection($this->logger);
+            $repo = new DbalMessageRepository($conn, $this->logger);
 
-        $keyboard = new InlineKeyboard();
-        $this->logger->info('Creating keyboard', ['chat_id' => $chatId]);
-        foreach ($repo->listChats() as $chat) {
-            $label = trim(($chat['title'] ?? '') . ' (' . $chat['id'] . ')');
-            $keyboard->addRow(['text' => $label, 'callback_data' => 'sum_c_' . $chat['id']]);
-            $this->logger->info('Adding keyboard rows', ['chat_id' => $chat]);
+            $keyboard = new InlineKeyboard();
+            $this->logger->info('Creating keyboard', ['chat_id' => $chatId]);
+            foreach ($repo->listChats() as $chat) {
+                $label = trim(($chat['title'] ?? '') . ' (' . $chat['id'] . ')');
+                $keyboard->addRow(['text' => $label, 'callback_data' => 'sum_c_' . $chat['id']]);
+                $this->logger->info('Adding keyboard rows', ['chat_id' => $chat]);
+            }
+
+            return Request::sendMessage([
+                'chat_id' => $chatId,
+                'text' => 'Select chat to summarize:',
+                'reply_markup' => $keyboard,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to prepare summarize keyboard', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->replyToChat('Failed to list chats, please try again later.');
         }
-
-        return Request::sendMessage([
-            'chat_id' => $chatId,
-            'text' => 'Select chat to summarize:',
-            'reply_markup' => $keyboard,
-        ]);
     }
 }
 

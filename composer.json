@@ -12,7 +12,8 @@
     "doctrine/dbal": "^4.3",
     "doctrine/migrations": "^3.9",
     "symfony/console": "^7.3",
-    "ext-curl": "*"
+    "ext-curl": "*",
+    "ext-calendar": "*"
   },
   "autoload": {
     "psr-4": {
