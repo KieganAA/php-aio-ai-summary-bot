@@ -35,7 +35,7 @@ class SummarizeCommand extends UserCommand
             $conn = Database::getConnection($this->logger);
             $repo = new DbalMessageRepository($conn, $this->logger);
 
-            $keyboard = new InlineKeyboard();
+            $keyboard = new InlineKeyboard([]);
             $this->logger->info('Creating keyboard', ['chat_id' => $chatId]);
             foreach ($repo->listChats() as $chat) {
                 $label = trim(($chat['title'] ?? '') . ' (' . $chat['id'] . ')');
