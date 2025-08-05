@@ -1,10 +1,3 @@
-# Load .env file if it exists
-ifneq (,$(wildcard .env))
-	include .env
-	export $(shell sed 's/=.*//' .env)
-endif
-
-
 chat-report:
 	@echo "Running ChatReport Command"
 	php bin/console app:chat-report
