@@ -67,7 +67,7 @@ class ReportService
                     'chat_id' => $chatId,
                     'error'   => $e->getMessage(),
                 ]);
-                $note = "\n\n⚠️ Active conversation ongoing";
+                $note = "\n\n⚠️ Активное обсуждение";
             }
         }
         $dateLine   = TextUtils::escapeMarkdown(date('Y-m-d', $now));
