@@ -58,10 +58,7 @@ if ($composerStatus !== 0) {
 }
 
 // Done
-$logger->info('Webhook executed successfully', [
-    'git_output' => $gitOutput,
-    'composer_output' => $composerOutput,
-]);
+$logger->info('Deployment executed successfully');
 
 http_response_code(200);
 echo "Webhook executed, Git updated, and Composer install completed.\n";
