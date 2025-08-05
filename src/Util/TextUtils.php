@@ -7,17 +7,18 @@ class TextUtils
 {
     public static function buildTranscript(array $messages): string
     {
-        $transcript = '';
+        $lines = [];
         foreach ($messages as $m) {
-            $t = date('H:i', $m['message_date']);
-            $transcript .= "[{$m['from_user']} @ {$t}] {$m['text']}\n";
+            $t       = date('H:i', $m['message_date']);
+            $lines[] = "[{$m['from_user']} @ {$t}] {$m['text']}";
         }
-        return $transcript;
+
+        return implode("\n", $lines);
     }
 
     public static function cleanTranscript(string $rawTranscript): string
     {
-        return preg_replace(
+        $result = preg_replace(
             [
                 '/^\\w+ joined the group.*$/m',
                 '/^\\w+ left the group.*$/m',
@@ -27,6 +28,14 @@ class TextUtils
             '',
             $rawTranscript
         );
+
+        if ($result === null) {
+            return trim($rawTranscript);
+        }
+
+        $collapsed = preg_replace("/\n{2,}/", "\n", $result) ?? $result;
+
+        return trim($collapsed);
     }
 
     /**
