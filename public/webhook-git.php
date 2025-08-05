@@ -11,12 +11,7 @@ $logger = LoggerService::getLogger();
 $currentUser = function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid())["name"] ?? '' : '';
 $repoOwner = function_exists('posix_getpwuid') ? posix_getpwuid(fileowner($projectRoot . '/.git'))["name"] ?? '' : '';
 $deployUser = Config::get('DEPLOY_USER') ?: $repoOwner; // run commands as repo owner by default
-$wrapCommand = static function (string $cmd) use ($deployUser, $currentUser): string {
-    if ($deployUser !== '' && $deployUser !== $currentUser) {
-        return 'sudo -u ' . escapeshellarg($deployUser) . ' sh -c ' . escapeshellarg($cmd);
-    }
-    return $cmd;
-};
+$wrapCommand = static fn(string $cmd): string => $cmd;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
