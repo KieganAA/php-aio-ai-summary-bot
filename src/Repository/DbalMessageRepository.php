@@ -90,6 +90,12 @@ class DbalMessageRepository implements MessageRepositoryInterface
         $this->logger->info('Messages marked processed', ['chat_id' => $chatId]);
     }
 
+    public function resetAllProcessed(): void
+    {
+        $this->conn->executeStatement('UPDATE messages SET processed = 0');
+        $this->logger->info('All messages marked unprocessed');
+    }
+
     public function listChats(): array
     {
         $rows = $this->conn->fetchAllAssociative('SELECT id, title FROM chats ORDER BY id');

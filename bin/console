@@ -11,6 +11,7 @@ use Src\Config\Config;
 use Src\Console\DailyReportCommand;
 use Src\Console\ChatReportCommand;
 use Src\Console\ListChatsCommand;
+use Src\Console\ResetProcessedCommand;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\Database;
 use Src\Service\DeepseekService;
@@ -39,5 +40,6 @@ $application = new Application();
 $application->add(new DailyReportCommand($report, $logger));
 $application->add(new ChatReportCommand($report, $logger));
 $application->add(new ListChatsCommand($repo, $logger));
+$application->add(new ResetProcessedCommand($repo, $logger));
 $application->run();
 
