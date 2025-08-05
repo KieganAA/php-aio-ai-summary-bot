@@ -22,24 +22,15 @@ class ReportService
         $this->logger = LoggerService::getLogger();
     }
 
-    public function runDailyReports(int $now): void
-    {
-        $this->logger->info('Running daily reports', ['day' => date('Y-m-d', $now)]);
-        foreach ($this->repo->listActiveChats($now) as $chatId) {
-            $this->runReportForChat($chatId, $now);
-        }
-    }
-
-    public function runReportForChat(int $chatId, int $now): void
+    private function generateSummary(int $chatId, int $now): ?array
     {
         $msgs = $this->repo->getMessagesForChat($chatId, $now);
         if (empty($msgs)) {
-            return;
+            return null;
         }
 
         $transcript = TextUtils::cleanTranscript(TextUtils::buildTranscript($msgs));
-
-        $chatTitle = $this->repo->getChatTitle($chatId);
+        $chatTitle  = $this->repo->getChatTitle($chatId);
         try {
             $summary = $this->deepseek->summarize(
                 $transcript,
@@ -52,8 +43,29 @@ class ReportService
                 'chat_id' => $chatId,
                 'error'   => $e->getMessage(),
             ]);
+            return null;
+        }
+
+        return ['summary' => $summary, 'messages' => $msgs, 'title' => $chatTitle];
+    }
+
+    public function runDailyReports(int $now): void
+    {
+        $this->logger->info('Running daily reports', ['day' => date('Y-m-d', $now)]);
+        foreach ($this->repo->listActiveChats($now) as $chatId) {
+            $this->runReportForChat($chatId, $now);
+        }
+    }
+
+    public function runReportForChat(int $chatId, int $now): void
+    {
+        $data = $this->generateSummary($chatId, $now);
+        if ($data === null) {
             return;
         }
+        $summary   = $data['summary'];
+        $msgs      = $data['messages'];
+        $chatTitle = $data['title'];
         $note = '';
         $lastMsgTs = $msgs[count($msgs) - 1]['message_date'];
         if ($now - $lastMsgTs < 3600) {
@@ -84,4 +96,44 @@ class ReportService
         $this->logger->info('Daily report sent', ['chat_id' => $chatId]);
         $this->repo->markProcessed($chatId, $now);
     }
+
+    public function runDigest(int $now): void
+    {
+        $this->logger->info('Running daily digest', ['day' => date('Y-m-d', $now)]);
+        $reports = [];
+        foreach ($this->repo->listActiveChats($now) as $chatId) {
+            $data = $this->generateSummary($chatId, $now);
+            if ($data === null) {
+                continue;
+            }
+            $summary = $data['summary'];
+            $reports[] = $summary;
+            if ($this->notion !== null) {
+                $title = 'Report ' . date('Y-m-d', $now) . ' #' . $chatId;
+                $this->notion->addReport($title, strip_tags($summary));
+            }
+            $this->repo->markProcessed($chatId, $now);
+        }
+        if (empty($reports)) {
+            return;
+        }
+        try {
+            $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now));
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
+            return;
+        }
+        $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
+        $header   = "*Daily digest*\n_{$dateLine}_\n\n";
+        $text     = $header . $digest;
+        $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
+        if ($this->slack !== null) {
+            $this->slack->sendMessage(strip_tags($text));
+        }
+        if ($this->notion !== null) {
+            $this->notion->addReport('Digest ' . date('Y-m-d', $now), strip_tags($digest));
+        }
+        $this->logger->info('Daily digest sent');
+    }
 }
+

@@ -186,7 +186,7 @@ class DeepseekService
 Правила:
 - Язык: русский. Стиль: деловой, краткий, прошедшее время.
 - Важное важнее болтовни; игнорируйте приветствия, стикеры, входы/выходы, изображения.
-- Каждая запись ≤ 20 слов. Максимум записей: participants 10, topics 8, events 10, decisions 8, actions 10, blockers 6, questions 6.
+- Каждая запись ≤ 40 слов. Максимум записей: participants 15, topics 12, events 12, decisions 10, actions 12, blockers 8, questions 8.
 - Если для поля нет данных, выводите [] или "" (не null).
 - Не выдумывайте факты; используйте "unknown", когда данных нет.
 - Время: ISO-8601 местное время для DATE и TIMEZONE, если указано явно, иначе пропускайте время.
@@ -231,7 +231,7 @@ SYS;
 ### Система
 Вы — "ChatSummariser-v2".
 Вам нужно кратко суммировать отрывок чата Telegram в компактный JSON-объект.
-Не добавляйте текст вне JSON. Язык: только русский. До 20 слов на пункт.
+Не добавляйте текст вне JSON. Язык: только русский. До 40 слов на пункт.
 
 ### Участники
 Наши сотрудники: {$our}
@@ -404,5 +404,22 @@ PROMPT;
 
         $summaryInput = implode("\n", $summaries);
         return $this->finalSummary($summaryInput, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
+    }
+
+    public function summarizeReports(array $reports, string $date): string
+    {
+        $client = $this->client();
+        $input = implode("\n\n", $reports);
+        $prompt = <<<PROMPT
+Вы — DailyReportsAggregator-v1.
+Суммируй на русском языке ключевые темы и проблемы из всех отчетов за {$date}.
+Выводи краткий маркированный список Markdown.
+
+Отчеты:
+{$input}
+PROMPT;
+        $client->setTemperature(0.2)->query($prompt, 'user');
+        $raw = $this->runWithRetries($client);
+        return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
     }
 }
