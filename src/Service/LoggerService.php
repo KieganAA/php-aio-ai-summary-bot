@@ -27,9 +27,14 @@ class LoggerService
             }
 
             $logger->pushHandler(new StreamHandler($logFile, Logger::DEBUG));
-            $chatIdEnv = Config::get('LOG_CHAT_ID');
-            $chatId = $chatIdEnv !== '' ? (int)$chatIdEnv : -1002671594630;
-            $logger->pushHandler(new TelegramLogHandler($chatId, Logger::ERROR));
+
+            $token = Config::get('TELEGRAM_BOT_TOKEN');
+            $name  = Config::get('TELEGRAM_BOT_NAME');
+            if ($token !== '' && $name !== '') {
+                $chatIdEnv = Config::get('LOG_CHAT_ID');
+                $chatId    = $chatIdEnv !== '' ? (int)$chatIdEnv : -1002671594630;
+                $logger->pushHandler(new TelegramLogHandler($chatId, Logger::ERROR));
+            }
         }
         return self::$logger;
     }

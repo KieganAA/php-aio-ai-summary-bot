@@ -41,7 +41,7 @@ class ReportServiceTest extends TestCase
             ->with(1)
             ->willReturn('My Chat');
 
-        $transcript = "[u @ 01:00] hi\n[v @ 02:00] there\n";
+        $transcript = "[u @ 01:00] hi\n[v @ 02:00] there";
         $deepseek->expects($this->once())
             ->method('summarize')
             ->with($transcript, 'My Chat', 1, date('Y-m-d', $run))
@@ -94,7 +94,7 @@ class ReportServiceTest extends TestCase
             ->with(1)
             ->willReturn('My Chat');
 
-        $transcript = "[u @ 01:30] earlier\n[v @ 02:00] latest topic\n";
+        $transcript = "[u @ 01:30] earlier\n[v @ 02:00] latest topic";
         $deepseek->expects($this->once())
             ->method('summarize')
             ->with($transcript, 'My Chat', 1, date('Y-m-d', $run))
