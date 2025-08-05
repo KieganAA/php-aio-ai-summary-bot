@@ -10,6 +10,7 @@ use Longman\TelegramBot\Request;
 use Psr\Log\LoggerInterface;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
+use Src\Service\AuthorizationService;
 use Src\Service\Database;
 use Src\Service\DeepseekService;
 use Src\Service\LoggerService;
@@ -33,6 +34,12 @@ class CallbackqueryCommand extends SystemCommand
     public function execute(): ServerResponse
     {
         $callback = $this->getCallbackQuery();
+        $user = $callback->getFrom()->getUsername();
+        if (!AuthorizationService::isAllowed($user)) {
+            $this->logger->warning('Unauthorized callback query', ['user' => $user]);
+            return $callback->answer(['text' => 'You are not allowed to use this bot.', 'show_alert' => true]);
+        }
+
         $data = $callback->getData();
         $message = $callback->getMessage();
         $chatId = $message->getChat()->getId();

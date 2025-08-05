@@ -9,6 +9,7 @@ use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 use Psr\Log\LoggerInterface;
+use Src\Service\AuthorizationService;
 use Src\Service\LoggerService;
 
 /**
@@ -38,6 +39,12 @@ class StartCommand extends UserCommand
      */
     public function execute(): ServerResponse
     {
+        $username = $this->getMessage()->getFrom()->getUsername();
+        if (!AuthorizationService::isAllowed($username)) {
+            $this->logger->warning('Unauthorized /start command', ['user' => $username]);
+            return $this->replyToChat('You are not allowed to use this bot.');
+        }
+
         $chatId = $this->getMessage()->getChat()->getId();
         $text   = 'Hey';
 

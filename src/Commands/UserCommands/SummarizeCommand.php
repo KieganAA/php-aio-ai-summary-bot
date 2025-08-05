@@ -9,6 +9,7 @@ use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
 use Psr\Log\LoggerInterface;
 use Src\Repository\DbalMessageRepository;
+use Src\Service\AuthorizationService;
 use Src\Service\Database;
 use Src\Service\LoggerService;
 
@@ -30,6 +31,11 @@ class SummarizeCommand extends UserCommand
     {
         $chatId = $this->getMessage()->getChat()->getId();
         $user = $this->getMessage()->getFrom()->getUsername();
+        if (!AuthorizationService::isAllowed($user)) {
+            $this->logger->warning('Unauthorized summarize command', ['user' => $user]);
+            return $this->replyToChat('You are not allowed to use this bot.');
+        }
+
         $this->logger->info('Summarize command triggered', ['chat_id' => $chatId, 'user' => $user]);
 
         try {
