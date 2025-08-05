@@ -30,6 +30,12 @@ class ReportService
         }
 
         $transcript = TextUtils::cleanTranscript(TextUtils::buildTranscript($msgs));
+        $msgCount   = count($msgs);
+        $users      = array_column($msgs, 'from_user');
+        $userCount  = count(array_unique($users));
+        $topUsers   = array_count_values($users);
+        arsort($topUsers);
+        $topUsers   = array_slice(array_keys($topUsers), 0, 3);
         $chatTitle  = $this->repo->getChatTitle($chatId);
         try {
             $summary = $this->deepseek->summarize(
@@ -46,7 +52,16 @@ class ReportService
             return null;
         }
 
-        return ['summary' => $summary, 'messages' => $msgs, 'title' => $chatTitle];
+        return [
+            'summary' => $summary,
+            'messages' => $msgs,
+            'title'    => $chatTitle,
+            'stats'    => [
+                'msg_count'  => $msgCount,
+                'user_count' => $userCount,
+                'top_users'  => $topUsers,
+            ],
+        ];
     }
 
     public function runDailyReports(int $now): void
@@ -66,6 +81,7 @@ class ReportService
         $summary   = $data['summary'];
         $msgs      = $data['messages'];
         $chatTitle = $data['title'];
+        $stats     = $data['stats'];
         $note = '';
         $lastMsgTs = $msgs[count($msgs) - 1]['message_date'];
         if ($now - $lastMsgTs < 3600) {
@@ -84,7 +100,12 @@ class ReportService
         }
         $dateLine   = TextUtils::escapeMarkdown(date('Y-m-d', $now));
         $header     = "*Report for chat* `{$chatId}`\n_{$dateLine}_\n\n";
-        $reportText = $header . $summary . $note;
+        $statsLine  = '`Messages`: ' . $stats['msg_count'] . ' \\| `Participants`: ' . $stats['user_count'];
+        if (!empty($stats['top_users'])) {
+            $usernames = array_map(static fn($u) => '@' . TextUtils::escapeMarkdown($u), $stats['top_users']);
+            $statsLine .= "\n`Top`: " . implode(', ', $usernames);
+        }
+        $reportText = $header . $statsLine . "\n\n" . $summary . $note;
         $this->telegram->sendMessage($this->summaryChatId, $reportText, 'MarkdownV2');
         if ($this->slack !== null) {
             $this->slack->sendMessage(strip_tags($reportText));
@@ -100,7 +121,9 @@ class ReportService
     public function runDigest(int $now): void
     {
         $this->logger->info('Running daily digest', ['day' => date('Y-m-d', $now)]);
-        $reports = [];
+        $reports       = [];
+        $totalMessages = 0;
+        $allUsers      = [];
         foreach ($this->repo->listActiveChats($now) as $chatId) {
             $data = $this->generateSummary($chatId, $now);
             if ($data === null) {
@@ -108,6 +131,10 @@ class ReportService
             }
             $summary = $data['summary'];
             $reports[] = $summary;
+            foreach ($data['messages'] as $m) {
+                $totalMessages++;
+                $allUsers[$m['from_user']] = true;
+            }
             if ($this->notion !== null) {
                 $title = 'Report ' . date('Y-m-d', $now) . ' #' . $chatId;
                 $this->notion->addReport($title, strip_tags($summary));
@@ -124,7 +151,8 @@ class ReportService
             return;
         }
         $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
-        $header   = "*Daily digest*\n_{$dateLine}_\n\n";
+        $statsLine = '`Total messages`: ' . $totalMessages . ' \\| `Participants`: ' . count($allUsers) . "\n\n";
+        $header   = "*Daily digest*\n_{$dateLine}_\n\n" . $statsLine;
         $text     = $header . $digest;
         $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
         if ($this->slack !== null) {

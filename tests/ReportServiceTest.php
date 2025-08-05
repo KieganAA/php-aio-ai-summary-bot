@@ -50,7 +50,16 @@ class ReportServiceTest extends TestCase
 
         $telegram->expects($this->once())
             ->method('sendMessage')
-            ->with(99, "*Report for chat* `1`\n_" . str_replace('-', '\\-', date('Y-m-d', $run)) . "_\n\nsummary", 'MarkdownV2');
+            ->with(
+                99,
+                $this->callback(function (string $msg) use ($run): bool {
+                    $date = str_replace('-', '\\-', date('Y-m-d', $run));
+                    return str_contains($msg, "*Report for chat* `1`\n_{$date}_")
+                        && str_contains($msg, '`Messages`: 2 \\| `Participants`: 2')
+                        && str_contains($msg, 'summary');
+                }),
+                'MarkdownV2'
+            );
 
         $repo->expects($this->once())
             ->method('markProcessed')
@@ -146,4 +155,5 @@ class ReportServiceTest extends TestCase
         $service = new ReportService($repo, $deepseek, $telegram, 99, $slack, $notion);
         $service->runDailyReports($day);
     }
+
 }
