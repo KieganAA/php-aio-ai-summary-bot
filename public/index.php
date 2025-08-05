@@ -22,6 +22,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Method Not Allowed');
 }
 
+// Ensure the request body contains valid JSON to avoid unnecessary
+// exceptions when bots or scanners hit the endpoint.
+$body = file_get_contents('php://input');
+if ($body === '' || json_decode($body, true) === null) {
+    http_response_code(200);
+    exit('Invalid JSON');
+}
+
 try {
     BotHandle::run();
 } catch (TelegramException $e) {
