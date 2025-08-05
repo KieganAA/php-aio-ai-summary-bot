@@ -25,7 +25,7 @@ if (!isset($headers['X-Hub-Signature-256']) || $headers['X-Hub-Signature-256'] !
 
 $output = [];
 $status = null;
-exec("cd /var/www/bot && git pull origin main && composer install 2>&1", $output, $status);
+exec("cd /var/www/bot && git pull origin master && composer install 2>&1", $output, $status);
 
 if ($status !== 0) {
     $logger->error("Git pull or composer install failed. Command output: " . implode("\n", $output));
