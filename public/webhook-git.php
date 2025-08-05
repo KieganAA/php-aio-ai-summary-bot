@@ -8,6 +8,8 @@ $projectRoot = realpath(__DIR__ . '/..');
 Config::load($projectRoot . '/');
 $logger = LoggerService::getLogger();
 
+// test
+
 $currentUser = function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid())["name"] ?? '' : '';
 $repoOwner = function_exists('posix_getpwuid') ? posix_getpwuid(fileowner($projectRoot . '/.git'))["name"] ?? '' : '';
 $deployUser = Config::get('DEPLOY_USER') ?: $repoOwner; // run commands as repo owner by default
