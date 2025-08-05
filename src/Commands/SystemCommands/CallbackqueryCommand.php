@@ -84,7 +84,7 @@ class CallbackqueryCommand extends SystemCommand
     private function sendDateSelector(DbalMessageRepository $repo, int $replyChatId, int $targetChatId, int $year, int $month, int $messageId): ServerResponse
     {
         $days = cal_days_in_month(CAL_GREGORIAN, $month, $year);
-        $keyboard = new InlineKeyboard();
+        $keyboard = new InlineKeyboard([]);
         $row = [];
         for ($d = 1; $d <= $days; $d++) {
             $row[] = [
