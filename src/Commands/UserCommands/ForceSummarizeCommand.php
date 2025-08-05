@@ -9,6 +9,7 @@ use Longman\TelegramBot\Entities\Keyboard;
 use Psr\Log\LoggerInterface;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
+use Src\Service\AuthorizationService;
 use Src\Service\Database;
 use Src\Service\DeepseekService;
 use Src\Service\LoggerService;
@@ -32,6 +33,12 @@ class ForceSummarizeCommand extends UserCommand
     public function execute(): ServerResponse
     {
         $chatId = $this->getMessage()->getChat()->getId();
+        $user = $this->getMessage()->getFrom()->getUsername();
+        if (!AuthorizationService::isAllowed($user)) {
+            $this->logger->warning('Unauthorized forcesummarize command', ['user' => $user]);
+            return $this->replyToChat('You are not allowed to use this bot.');
+        }
+
         $this->logger->info('Force summarize command triggered', ['chat_id' => $chatId]);
         $conn = Database::getConnection($this->logger);
         $repo = new DbalMessageRepository($conn, $this->logger);
