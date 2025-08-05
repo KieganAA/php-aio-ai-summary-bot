@@ -6,6 +6,10 @@ daily-report:
 	@echo "Running DailyReport Command"
 	php bin/console app:daily-report
 
+daily-digest:
+	@echo "Running DailyReport Command"
+	php bin/console app:daily-digest
+
 list-chats:
 	@echo "Running ListChats Command"
 	php bin/console app:list-chats
