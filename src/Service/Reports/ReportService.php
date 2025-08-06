@@ -72,11 +72,14 @@ class ReportService
         ];
     }
 
-    public function runDailyReports(int $now): void
+    public function runDailyReports(int $now, string $style = 'classic'): void
     {
-        $this->logger->info('Running daily reports', ['day' => date('Y-m-d', $now)]);
+        $this->logger->info('Running daily reports', [
+            'day'   => date('Y-m-d', $now),
+            'style' => $style,
+        ]);
         foreach ($this->repo->listActiveChats($now) as $chatId) {
-            $this->runReportForChat($chatId, $now);
+            $this->runReportForChat($chatId, $now, $style);
         }
     }
 
@@ -126,14 +129,17 @@ class ReportService
         $this->repo->markProcessed($chatId, $now);
     }
 
-    public function runDigest(int $now): void
+    public function runDigest(int $now, string $style = 'executive'): void
     {
-        $this->logger->info('Running daily digest', ['day' => date('Y-m-d', $now)]);
+        $this->logger->info('Running daily digest', [
+            'day'   => date('Y-m-d', $now),
+            'style' => $style,
+        ]);
         $reports       = [];
         $totalMessages = 0;
         $allUsers      = [];
         foreach ($this->repo->listActiveChats($now) as $chatId) {
-            $data = $this->generateSummary($chatId, $now, 'classic');
+            $data = $this->generateSummary($chatId, $now, $style);
             if ($data === null) {
                 continue;
             }
@@ -153,7 +159,7 @@ class ReportService
             return;
         }
         try {
-            $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now));
+            $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now), $style);
         } catch (Throwable $e) {
             $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
             return;
@@ -161,7 +167,11 @@ class ReportService
         $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
         $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
         $header = "*Дневной дайджест*\n_{$dateLine}_\n\n" . $statsLine;
-        $body   = "```json\n{$digest}\n```";
+        if ($style === 'executive') {
+            $body = "```json\n{$digest}\n```";
+        } else {
+            $body = $digest;
+        }
         $text   = $header . $body;
         $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
         if ($this->slack !== null) {

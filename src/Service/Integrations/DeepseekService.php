@@ -411,8 +411,29 @@ PROMPT;
         return $this->finalSummary($summaryInput, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
     }
 
-    public function summarizeReports(array $reports, string $date): string
+    public function summarizeReports(array $reports, string $date, string $style = 'executive'): string
     {
+        if (strtolower($style) !== 'executive') {
+            $client = $this->client();
+            $system = <<<SYS
+Вы — ChatDigestClassic-v1.
+Суммируй на русском языке список кратких отчётов о чатах за {$date} в связный текст.
+Не добавляй ничего лишнего. До 100 слов.
+SYS;
+
+            $payload = [
+                'chat_summaries' => $reports,
+            ];
+
+            $client
+                ->setTemperature(0.2)
+                ->query($system, 'system')
+                ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+            $raw = $this->runWithRetries($client);
+            return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
+        }
+
         $client = $this->client();
         $system = <<<SYS
 Вы — ChatC-LevelDigest-v1.
