@@ -3,42 +3,42 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
-use Src\Console\DailyReportCommand;
+use Src\Console\DailyDigestCommand;
 use Src\Service\Reports\ReportService;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
-class DailyReportCommandTest extends TestCase
+class DailyDigestCommandTest extends TestCase
 {
-    public function testRunsReportService(): void
+    public function testRunsDigestService(): void
     {
         $report = $this->createMock(ReportService::class);
         $report->expects($this->once())
-            ->method('runDailyReports')
-            ->with($this->isType('int'), 'classic');
+            ->method('runDigest')
+            ->with($this->isType('int'), 'executive');
 
-        $command = new DailyReportCommand($report, new NullLogger());
+        $command = new DailyDigestCommand($report, new NullLogger());
         $application = new Application();
         $application->add($command);
 
-        $tester = new CommandTester($application->find('app:daily-report'));
+        $tester = new CommandTester($application->find('app:daily-digest'));
         $tester->execute([]);
         $tester->assertCommandIsSuccessful();
     }
 
-    public function testRunsReportServiceWithStyle(): void
+    public function testRunsDigestServiceWithStyle(): void
     {
         $report = $this->createMock(ReportService::class);
         $report->expects($this->once())
-            ->method('runDailyReports')
-            ->with($this->isType('int'), 'executive');
+            ->method('runDigest')
+            ->with($this->isType('int'), 'classic');
 
-        $command = new DailyReportCommand($report, new NullLogger());
+        $command = new DailyDigestCommand($report, new NullLogger());
         $application = new Application();
         $application->add($command);
 
-        $tester = new CommandTester($application->find('app:daily-report'));
-        $tester->execute(['--style' => 'executive']);
+        $tester = new CommandTester($application->find('app:daily-digest'));
+        $tester->execute(['--style' => 'classic']);
         $tester->assertCommandIsSuccessful();
     }
 }

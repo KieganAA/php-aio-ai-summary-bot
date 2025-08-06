@@ -173,7 +173,7 @@ class ReportServiceTest extends TestCase
         $factory = $this->createMock(ReportGeneratorFactory::class);
         $generator = $this->createMock(ReportGeneratorInterface::class);
         $generator->method('summarize')->willReturn('summary');
-        $factory->method('create')->with('classic')->willReturn($generator);
+        $factory->method('create')->with('executive')->willReturn($generator);
 
         $run = strtotime('2025-07-31 04:00:00');
 
@@ -199,7 +199,7 @@ class ReportServiceTest extends TestCase
 
         $deepseek->expects($this->once())
             ->method('summarizeReports')
-            ->with(['summary'], date('Y-m-d', $run))
+            ->with(['summary'], date('Y-m-d', $run), 'executive')
             ->willReturn('{"overall_status":"ok"}');
 
         $telegram->expects($this->once())
