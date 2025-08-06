@@ -1,7 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace Src\Service;
+namespace Src\Service\Reports;
+
+use Src\Service\Integrations\DeepseekService;
+use Src\Service\Reports\Generators\ClassicReportGenerator;
+use Src\Service\Reports\Generators\ExecutiveReportGenerator;
 
 class ReportGeneratorFactory
 {

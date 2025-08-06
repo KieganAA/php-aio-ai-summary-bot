@@ -1,12 +1,17 @@
 <?php
 declare(strict_types=1);
 
-namespace Src\Service;
+namespace Src\Service\Integrations;
 
 use DeepSeek\DeepSeekClient;
 use GuzzleHttp\Client as HttpClient;
+use InvalidArgumentException;
+use RuntimeException;
+use Src\Service\EmployeeService;
 use Src\Util\TextUtils;
 use Src\Util\TokenCounter;
+use Throwable;
+use const CURLE_OPERATION_TIMEDOUT;
 
 /**
  * Wrapper around the DeepSeek client that provides a map‑reduce
@@ -20,7 +25,7 @@ class DeepseekService
     {
         $apiKey = trim($apiKey);
         if ($apiKey === '') {
-            throw new \InvalidArgumentException('API key must not be empty');
+            throw new InvalidArgumentException('API key must not be empty');
         }
 
         $this->apiKey = $apiKey;
@@ -53,7 +58,7 @@ class DeepseekService
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
                 $raw = $client->run();
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 if ($attempt + 1 >= $maxRetries) {
                     throw $e;
                 }
@@ -66,12 +71,12 @@ class DeepseekService
             }
 
             if ($attempt + 1 >= $maxRetries) {
-                throw new \RuntimeException('Cloudflare SSL handshake failed (error 525)');
+                throw new RuntimeException('Cloudflare SSL handshake failed (error 525)');
             }
             usleep((int)(250_000 * (2 ** $attempt)));
         }
 
-        throw new \RuntimeException('Failed to receive valid response from DeepSeek');
+        throw new RuntimeException('Failed to receive valid response from DeepSeek');
     }
 
     /**
@@ -394,8 +399,8 @@ PROMPT;
         foreach ($chunks as $i => $chunk) {
             try {
                 $summaries[] = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
-            } catch (\Throwable $e) {
-                if ($e->getCode() === \CURLE_OPERATION_TIMEDOUT && $maxTokens > 100) {
+            } catch (Throwable $e) {
+                if ($e->getCode() === CURLE_OPERATION_TIMEDOUT && $maxTokens > 100) {
                     return $this->summarize($transcript, $chatTitle, $chatId, $date, (int)($maxTokens / 2));
                 }
                 throw $e;

@@ -4,7 +4,7 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Src\Console\DailyReportCommand;
-use Src\Service\ReportService;
+use Src\Service\Reports\ReportService;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 

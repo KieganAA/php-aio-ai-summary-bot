@@ -8,19 +8,19 @@ ini_set('memory_limit', '1G');
 
 
 use Src\Config\Config;
-use Src\Console\DailyReportCommand;
 use Src\Console\ChatReportCommand;
 use Src\Console\DailyDigestCommand;
+use Src\Console\DailyReportCommand;
 use Src\Console\ListChatsCommand;
 use Src\Console\ResetProcessedCommand;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\Database;
-use Src\Service\DeepseekService;
+use Src\Service\Integrations\DeepseekService;
+use Src\Service\Integrations\NotionService;
+use Src\Service\Integrations\SlackService;
 use Src\Service\LoggerService;
-use Src\Service\NotionService;
-use Src\Service\ReportService;
-use Src\Service\SlackService;
-use Src\Service\TelegramService;
+use Src\Service\Reports\ReportService;
+use Src\Service\Telegram\TelegramService;
 use Symfony\Component\Console\Application;
 
 Config::load(__DIR__ . '/..');

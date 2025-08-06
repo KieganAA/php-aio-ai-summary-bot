@@ -1,7 +1,10 @@
 <?php
 declare(strict_types=1);
 
-namespace Src\Service;
+namespace Src\Service\Reports\Generators;
+
+use Src\Service\Integrations\DeepseekService;
+use Src\Service\Reports\ReportGeneratorInterface;
 
 class ClassicReportGenerator implements ReportGeneratorInterface
 {

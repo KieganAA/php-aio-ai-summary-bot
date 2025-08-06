@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Src\Command;
 
-use Src\Service\ReportService;
+use Src\Service\Reports\ReportService;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;

@@ -2,13 +2,13 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
-use Src\Service\DeepseekService;
+use Src\Service\Integrations\DeepseekService;
 
 class DeepseekServiceTest extends TestCase
 {
     public function testConstructorThrowsOnEmptyApiKey(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         new DeepseekService('');
     }
 

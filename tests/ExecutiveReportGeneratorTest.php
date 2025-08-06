@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
-use Src\Service\ExecutiveReportGenerator;
+use Src\Service\Reports\Generators\ExecutiveReportGenerator;
 
 class ExecutiveReportGeneratorTest extends TestCase
 {

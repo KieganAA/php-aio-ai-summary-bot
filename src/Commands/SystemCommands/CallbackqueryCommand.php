@@ -4,18 +4,19 @@ declare(strict_types=1);
 namespace Src\Commands\SystemCommands;
 
 use Longman\TelegramBot\Commands\SystemCommand;
-use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Entities\InlineKeyboard;
+use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
 use Psr\Log\LoggerInterface;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\AuthorizationService;
 use Src\Service\Database;
-use Src\Service\DeepseekService;
+use Src\Service\Integrations\DeepseekService;
 use Src\Service\LoggerService;
-use Src\Service\TelegramService;
+use Src\Service\Telegram\TelegramService;
 use Src\Util\TextUtils;
+use Throwable;
 
 class CallbackqueryCommand extends SystemCommand
 {
@@ -54,7 +55,7 @@ class CallbackqueryCommand extends SystemCommand
             return $response;
         }
 
-        if (preg_match('/^sum_m_(\-?\d+)_(\d{4})-(\d{2})_(prev|next)$/', $data, $m)) {
+        if (preg_match('/^sum_m_(-?\d+)_(\d{4})-(\d{2})_(prev|next)$/', $data, $m)) {
             $targetChatId = (int)$m[1];
             $year = (int)$m[2];
             $month = (int)$m[3];
@@ -72,7 +73,7 @@ class CallbackqueryCommand extends SystemCommand
             return $response;
         }
 
-        if (preg_match('/^sum_d_(\-?\d+)_(\d{4}-\d{2}-\d{2})$/', $data, $m)) {
+        if (preg_match('/^sum_d_(-?\d+)_(\d{4}-\d{2}-\d{2})$/', $data, $m)) {
             $targetChatId = (int)$m[1];
             $dateStr = $m[2];
             Request::editMessageText([
@@ -143,7 +144,7 @@ class CallbackqueryCommand extends SystemCommand
         try {
             $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, $dateStr);
             $this->logger->info('Summary generated', ['chat_id' => $targetId]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger->error('Summary generation failed', [
                 'chat_id' => $targetId,
                 'error' => $e->getMessage(),

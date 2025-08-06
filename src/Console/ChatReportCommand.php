@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Src\Console;
 
 use Psr\Log\LoggerInterface;
-use Src\Service\ReportService;
+use Src\Service\Reports\ReportService;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;

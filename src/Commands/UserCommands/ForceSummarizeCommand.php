@@ -4,17 +4,18 @@ declare(strict_types=1);
 namespace Src\Commands\UserCommands;
 
 use Longman\TelegramBot\Commands\UserCommand;
-use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Entities\Keyboard;
+use Longman\TelegramBot\Entities\ServerResponse;
 use Psr\Log\LoggerInterface;
 use Src\Config\Config;
 use Src\Repository\DbalMessageRepository;
 use Src\Service\AuthorizationService;
 use Src\Service\Database;
-use Src\Service\DeepseekService;
+use Src\Service\Integrations\DeepseekService;
 use Src\Service\LoggerService;
-use Src\Service\TelegramService;
+use Src\Service\Telegram\TelegramService;
 use Src\Util\TextUtils;
+use Throwable;
 
 class ForceSummarizeCommand extends UserCommand
 {
@@ -80,7 +81,7 @@ class ForceSummarizeCommand extends UserCommand
         try {
             $summary = $deepseek->summarize($cleaned, $chatTitle, $targetId, $dateStr);
             $this->logger->info('Force summary generated', ['chat_id' => $targetId]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger->error('Force summary failed', [
                 'chat_id' => $targetId,
                 'error' => $e->getMessage(),

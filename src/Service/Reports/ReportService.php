@@ -1,11 +1,18 @@
 <?php
 declare(strict_types=1);
 
-namespace Src\Service;
+namespace Src\Service\Reports;
 
 use Psr\Log\LoggerInterface;
 use Src\Repository\MessageRepositoryInterface;
+use Src\Service\Integrations\DeepseekService;
+use Src\Service\Integrations\NotionService;
+use Src\Service\Integrations\SlackService;
+use Src\Service\LoggerService;
+use Src\Service\Reports\Generators\ClassicReportGenerator;
+use Src\Service\Telegram\TelegramService;
 use Src\Util\TextUtils;
+use Throwable;
 
 class ReportService
 {
@@ -45,7 +52,7 @@ class ReportService
                 'chat_id'    => $chatId,
                 'date'       => date('Y-m-d', $now),
             ]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger->error('Failed to generate summary', [
                 'chat_id' => $chatId,
                 'error'   => $e->getMessage(),
@@ -91,7 +98,7 @@ class ReportService
             try {
                 $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
                 $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $this->logger->error('Failed to summarise active conversation', [
                     'chat_id' => $chatId,
                     'error'   => $e->getMessage(),
@@ -147,7 +154,7 @@ class ReportService
         }
         try {
             $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now));
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
             return;
         }

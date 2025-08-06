@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Src\Service;
+namespace Src\Service\Telegram;
 
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;

@@ -2,14 +2,14 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
-use Src\Service\ReportService;
 use Src\Repository\MessageRepositoryInterface;
-use Src\Service\DeepseekService;
-use Src\Service\TelegramService;
-use Src\Service\SlackService;
-use Src\Service\NotionService;
-use Src\Service\ReportGeneratorFactory;
-use Src\Service\ReportGeneratorInterface;
+use Src\Service\Integrations\DeepseekService;
+use Src\Service\Integrations\NotionService;
+use Src\Service\Integrations\SlackService;
+use Src\Service\Reports\ReportGeneratorFactory;
+use Src\Service\Reports\ReportGeneratorInterface;
+use Src\Service\Reports\ReportService;
+use Src\Service\Telegram\TelegramService;
 
 class ReportServiceTest extends TestCase
 {

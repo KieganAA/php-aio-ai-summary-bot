@@ -7,6 +7,7 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 use Src\Config\Config;
+use Src\Service\Telegram\TelegramLogHandler;
 
 class LoggerService
 {

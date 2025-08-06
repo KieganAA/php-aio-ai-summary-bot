@@ -2,6 +2,10 @@ chat-report:
 	@echo "Running ChatReport Command"
 	php bin/console app:chat-report
 
+chat-report-ex:
+	@echo "Running ChatReport Command"
+	php bin/console app:chat-report --style=executive
+
 daily-report:
 	@echo "Running DailyReport Command"
 	php bin/console app:daily-report
