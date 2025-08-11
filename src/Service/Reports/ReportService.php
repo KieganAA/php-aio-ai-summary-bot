@@ -156,7 +156,8 @@ class ReportService
                 if (is_array($item)) {
                     $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 }
-                $lines[] = '- ' . TextUtils::escapeMarkdown((string)$item);
+                // Telegram MarkdownV2 requires dashes to be escaped
+                $lines[] = '\\- ' . TextUtils::escapeMarkdown((string)$item);
             }
         }
 
