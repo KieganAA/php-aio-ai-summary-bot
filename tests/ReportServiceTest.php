@@ -165,7 +165,7 @@ class ReportServiceTest extends TestCase
         $service->runDailyReports($day);
     }
 
-    public function testRunDigestSendsJson(): void
+    public function testRunDigestSendsFormattedText(): void
     {
         $repo = $this->createMock(MessageRepositoryInterface::class);
         $deepseek = $this->createMock(DeepseekService::class);
@@ -209,8 +209,8 @@ class ReportServiceTest extends TestCase
                 $this->callback(function (string $msg) use ($run): bool {
                     $date = str_replace('-', '\\-', date('Y-m-d', $run));
                     return str_contains($msg, "*Дневной дайджест*\n_{$date}_")
-                        && str_contains($msg, '```json')
-                        && str_contains($msg, '{"overall_status":"ok"}');
+                        && !str_contains($msg, '```json')
+                        && str_contains($msg, '*Статус*: ok');
                 }),
                 'MarkdownV2'
             );
