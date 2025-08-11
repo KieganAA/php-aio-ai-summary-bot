@@ -129,6 +129,40 @@ class ReportService
         $this->repo->markProcessed($chatId, $now);
     }
 
+    /**
+     * Convert executive digest JSON into a Markdown formatted text.
+     */
+    private function formatExecutiveDigest(string $json): string
+    {
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            return TextUtils::escapeMarkdown($json);
+        }
+
+        $lines = [];
+        if (isset($data['overall_status'])) {
+            $lines[] = '*Статус*: ' . TextUtils::escapeMarkdown((string)$data['overall_status']);
+            unset($data['overall_status']);
+        }
+
+        foreach ($data as $section => $items) {
+            if (!is_array($items) || empty($items)) {
+                continue;
+            }
+            $lines[] = '';
+            $sectionName = str_replace('_', ' ', (string)$section);
+            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
+            foreach ($items as $item) {
+                if (is_array($item)) {
+                    $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+                $lines[] = '- ' . TextUtils::escapeMarkdown((string)$item);
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
     public function runDigest(int $now, string $style = 'executive'): void
     {
         $this->logger->info('Running daily digest', [
@@ -168,7 +202,7 @@ class ReportService
         $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
         $header = "*Дневной дайджест*\n_{$dateLine}_\n\n" . $statsLine;
         if ($style === 'executive') {
-            $body = "```json\n{$digest}\n```";
+            $body = $this->formatExecutiveDigest($digest);
         } else {
             $body = $digest;
         }
