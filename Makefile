@@ -18,9 +18,9 @@ daily-digest:
 	@echo "Running DailyDigest Command"
 	php bin/console app:daily-digest
 
-daily-digest-cl:
+daily-digest-ex:
 	@echo "Running DailyDigest Command"
-	php bin/console app:daily-digest --style=classic
+	php bin/console app:daily-digest --style=executive
 
 list-chats:
 	@echo "Running ListChats Command"
