@@ -10,6 +10,7 @@ use RuntimeException;
 use Src\Service\EmployeeService;
 use Src\Util\TextUtils;
 use Src\Util\TokenCounter;
+use Src\Util\PromptLoader;
 use Throwable;
 use const CURLE_OPERATION_TIMEDOUT;
 
@@ -182,27 +183,14 @@ class DeepseekService
         string $date,
         int $chunkIndex
     ): string {
-        $client = $this->client();
-
-        $system = <<<SYS
-Вы — ChatChunk-Summarizer-v1.
-Возвращайте ТОЛЬКО СТРОГИЙ JSON (без текста). Цель: зафиксировать, что произошло в этом фрагменте чата, чтобы потом объединить.
-
-Правила:
-- Язык: русский. Стиль: деловой, краткий, прошедшее время.
-- Игнорируй приветствия, стикеры, входы/выходы, изображения.
-- Каждая запись ≤ 40 слов.
-- Если для поля нет данных, выводи [] или "" (не null).
-- Не выдумывай факты; используй "unknown", когда данных нет.
-- Время: ISO-8601 местное время для DATE и TIMEZONE, если указано явно, иначе пропускайте время.
-SYS;
-
+        $client  = $this->client();
+        $system  = PromptLoader::system('chunk_summary');
         $payload = [
             'chat_title' => $chatTitle,
-            'chat_id' => (string)$chatId,
-            'date' => $date,
-            'timezone' => 'Europe/Moscow',
-            'chunk_id' => 'chunk-' . $chunkIndex,
+            'chat_id'    => (string) $chatId,
+            'date'       => $date,
+            'timezone'   => 'Europe/Moscow',
+            'chunk_id'   => 'chunk-' . $chunkIndex,
             'transcript' => $chunk,
         ];
 
@@ -227,40 +215,26 @@ SYS;
         array $ourEmployees,
         array $clientEmployees
     ): string {
-        $client = $this->client();
+        $client  = $this->client();
+        $system  = PromptLoader::system('final_summary');
+        $payload = [
+            'chat_title'       => $chatTitle,
+            'chat_id'          => (string) $chatId,
+            'date'             => $date,
+            'our_employees'    => $ourEmployees,
+            'client_employees' => $clientEmployees,
+            'transcript'       => $input,
+        ];
 
-        $our = $this->formatNames($ourEmployees);
-        $clients = $this->formatNames($clientEmployees);
+        $client
+            ->setTemperature(0.2)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
-        $prompt = <<<PROMPT
-### Система
-Вы — "ChatSummariser-v2".
-Вам нужно кратко суммировать отрывок чата Telegram в компактный JSON-объект.
-Не добавляйте текст вне JSON. Язык: только русский. До 40 слов на пункт.
-
-### Участники
-Наши сотрудники: {$our}
-Сотрудники клиента: {$clients}
-
-### Вход
-CHAT_TITLE: {$chatTitle}
-DATE: {$date}
-TRANSCRIPT:
-{$input}
-
-### Выход (только JSON)
-{
-  "participants": ["..."],
-  "topics": ["..."],
-  "issues": ["..."],
-  "decisions": ["..."],
-}
-PROMPT;
-
-        $client->query($prompt, 'system');
-        $raw = $this->runWithRetries($client);
+        $raw     = $this->runWithRetries($client);
         $content = $this->extractContent($raw);
-        $json = $this->decodeJson($content);
+        $json    = $this->decodeJson($content);
         if ($json === null) {
             return TextUtils::escapeMarkdown($content);
         }
@@ -371,10 +345,19 @@ PROMPT;
 
     public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
     {
-        $client = $this->client();
-        // $prompt = "Summarize in no more than 30 words what the chat messages are about:\n" . $transcript;
-        $prompt = "Кратко суммируй на русском языке, используя не больше 30 слов - о чем были сообщения:\n" . $transcript;
-        $client->setTemperature(0.2)->query($prompt, 'user');
+        $client  = $this->client();
+        $system  = PromptLoader::system('topic_summary');
+        $payload = [
+            'transcript' => $transcript,
+            'chat_title' => $chatTitle,
+            'chat_id'    => (string) $chatId,
+        ];
+
+        $client
+            ->setTemperature(0.2)
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
         $raw = $this->runWithRetries($client);
         return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
     }
@@ -414,13 +397,8 @@ PROMPT;
     public function summarizeReports(array $reports, string $date, string $style = 'executive'): string
     {
         if (strtolower($style) !== 'executive') {
-            $client = $this->client();
-            $system = <<<SYS
-Вы — ChatDigestClassic-v1.
-Суммируй на русском языке список кратких отчётов о чатах за {$date} в связный текст.
-Не добавляй ничего лишнего. До 100 слов.
-SYS;
-
+            $client  = $this->client();
+            $system  = PromptLoader::system('digest_classic', ['date' => $date]);
             $payload = [
                 'chat_summaries' => $reports,
             ];
@@ -434,20 +412,10 @@ SYS;
             return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
         }
 
-        $client = $this->client();
-        $system = <<<SYS
-Вы — ChatC-LevelDigest-v1.
-Цель: выдать КОМПАКТНЫЙ JSON-отчёт о состоянии клиентских чатов (для топ-менеджеров).
-• Пиши ТОЛЬКО JSON, никаких пояснений.
-• Язык: русский. Каждый элемент ≤ 20 слов.
-• Не пытайся определять ответственных или статус задач.
-• Игнорируй приветствия, стикеры, «спасибо».
-• Используй только информацию из chat_summaries, не выдумывай и не предлагай решений.
-• Если данных нет — верни [] или "".
-SYS;
-
+        $client  = $this->client();
+        $system  = PromptLoader::system('digest_executive');
         $payload = [
-            'date' => $date,
+            'date'           => $date,
             'chat_summaries' => $reports,
         ];
 

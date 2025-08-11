@@ -7,25 +7,6 @@ use Src\Service\Reports\ReportGeneratorInterface;
 
 class ExecutiveReportGenerator implements ReportGeneratorInterface
 {
-    private array $prompt;
-
-    public function __construct()
-    {
-        $this->prompt = $this->loadPrompt();
-    }
-
-    private function loadPrompt(): array
-    {
-        $path = __DIR__ . '/../prompts/executive.yml';
-        if (is_file($path) && function_exists('yaml_parse_file')) {
-            $parsed = yaml_parse_file($path);
-            if (is_array($parsed)) {
-                return $parsed;
-            }
-        }
-        return [];
-    }
-
     public function summarize(string $transcript, array $meta): string
     {
         $status = $this->deriveStatus($transcript);

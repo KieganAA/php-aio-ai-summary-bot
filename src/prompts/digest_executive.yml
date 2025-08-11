@@ -17,5 +17,3 @@ system: |
     "client_mood": "",
     "notable_quotes": []
   }
-user: |
-  { "date": "{{ date }}", "chat_summaries": [{{ summaries }}] }
