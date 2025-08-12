@@ -165,6 +165,60 @@ class ReportServiceTest extends TestCase
         $service->runDailyReports($day);
     }
 
+    public function testFormatsExecutiveReport(): void
+    {
+        $repo = $this->createMock(MessageRepositoryInterface::class);
+        $deepseek = $this->createMock(DeepseekService::class);
+        $telegram = $this->createMock(TelegramService::class);
+        $factory = $this->createMock(ReportGeneratorFactory::class);
+        $generator = $this->createMock(ReportGeneratorInterface::class);
+        $generator->method('summarize')->willReturn('{"overall_status":"ok","highlights":["h"],"risks":["r"]}');
+        $factory->method('create')->with('executive')->willReturn($generator);
+
+        $run = strtotime('2025-07-31 04:00:00');
+
+        $repo->expects($this->once())
+            ->method('listActiveChats')
+            ->with($run)
+            ->willReturn([1]);
+
+        $repo->expects($this->once())
+            ->method('getMessagesForChat')
+            ->with(1, $run)
+            ->willReturn([
+                ['from_user' => 'u', 'message_date' => $run - 7200, 'text' => 'hi'],
+            ]);
+
+        $repo->expects($this->once())
+            ->method('getChatTitle')
+            ->with(1)
+            ->willReturn('My Chat');
+
+        $telegram->expects($this->once())
+            ->method('sendMessage')
+            ->with(
+                99,
+                $this->callback(function (string $msg) use ($run): bool {
+                    $date = str_replace('-', '\\-', date('Y-m-d', $run));
+                    return str_contains($msg, "*Report for chat* `1`\n_{$date}_")
+                        && str_contains($msg, '`Messages`: 1 \\| `Participants`: 1')
+                        && str_contains($msg, '*Статус*: ok')
+                        && str_contains($msg, '*Highlights*')
+                        && str_contains($msg, '\\- h')
+                        && str_contains($msg, '*Risks*')
+                        && str_contains($msg, '\\- r');
+                }),
+                'MarkdownV2'
+            );
+
+        $repo->expects($this->once())
+            ->method('markProcessed')
+            ->with(1, $run);
+
+        $service = new ReportService($repo, $deepseek, $telegram, 99, null, null, $factory);
+        $service->runDailyReports($run, 'executive');
+    }
+
     public function testRunDigestSendsFormattedText(): void
     {
         $repo = $this->createMock(MessageRepositoryInterface::class);
@@ -208,8 +262,9 @@ class ReportServiceTest extends TestCase
                 99,
                 $this->callback(function (string $msg) use ($run): bool {
                     $date = str_replace('-', '\\-', date('Y-m-d', $run));
-                    return str_contains($msg, "*Дневной дайджест*\n_{$date}_")
+                    return str_contains($msg, "*Daily digest*\n_{$date}_")
                         && !str_contains($msg, '```json')
+                        && str_contains($msg, '`Messages`: 2 \\| `Participants`: 2')
                         && str_contains($msg, '*Статус*: ok');
                 }),
                 'MarkdownV2'
