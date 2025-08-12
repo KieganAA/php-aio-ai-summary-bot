@@ -16,7 +16,7 @@ class ReportGeneratorFactory
     public function create(string $style): ReportGeneratorInterface
     {
         return match (strtolower($style)) {
-            'executive' => new ExecutiveReportGenerator(),
+            'executive' => new ExecutiveReportGenerator($this->deepseek),
             default     => new ClassicReportGenerator($this->deepseek),
         };
     }

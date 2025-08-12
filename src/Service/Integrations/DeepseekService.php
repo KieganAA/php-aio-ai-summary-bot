@@ -362,6 +362,31 @@ class DeepseekService
         return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
     }
 
+    public function inferMood(string $transcript): string
+    {
+        $client  = $this->client();
+        $system  = PromptLoader::system('mood');
+        $payload = [
+            'transcript' => $transcript,
+        ];
+
+        $client
+            ->setTemperature(0.0)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+        try {
+            $raw     = $this->runWithRetries($client);
+            $content = $this->extractContent($raw);
+            $data    = json_decode($content, true);
+            $mood    = strtolower((string)($data['mood'] ?? $data['client_mood'] ?? ''));
+            return in_array($mood, ['positive', 'neutral', 'negative'], true) ? $mood : 'neutral';
+        } catch (Throwable) {
+            return 'neutral';
+        }
+    }
+
     public function summarize(
         string $transcript,
         string $chatTitle = '',

@@ -10,6 +10,7 @@ use Src\Service\Integrations\NotionService;
 use Src\Service\Integrations\SlackService;
 use Src\Service\LoggerService;
 use Src\Service\Reports\Generators\ClassicReportGenerator;
+use Src\Service\Reports\Generators\ExecutiveReportGenerator;
 use Src\Service\Telegram\TelegramService;
 use Src\Util\TextUtils;
 use Throwable;
@@ -45,7 +46,10 @@ class ReportService
         arsort($topUsers);
         $topUsers   = array_slice(array_keys($topUsers), 0, 3);
         $chatTitle  = $this->repo->getChatTitle($chatId);
-        $generator = $this->factory?->create($style) ?? new ClassicReportGenerator($this->deepseek);
+        $generator = $this->factory?->create($style)
+            ?? (strtolower($style) === 'executive'
+                ? new ExecutiveReportGenerator($this->deepseek)
+                : new ClassicReportGenerator($this->deepseek));
         try {
             $summary = $generator->summarize($transcript, [
                 'chat_title' => $chatTitle,
@@ -152,18 +156,27 @@ class ReportService
         }
 
         foreach ($data as $section => $items) {
-            if (!is_array($items) || empty($items)) {
+            if (is_array($items)) {
+                if (empty($items)) {
+                    continue;
+                }
+                $lines[] = '';
+                $sectionName = str_replace('_', ' ', (string) $section);
+                $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
+                foreach ($items as $item) {
+                    if (is_array($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    }
+                    $lines[] = '\\- ' . TextUtils::escapeMarkdown((string) $item);
+                }
                 continue;
             }
-            $lines[] = '';
-            $sectionName = str_replace('_', ' ', (string) $section);
-            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
-            foreach ($items as $item) {
-                if (is_array($item)) {
-                    $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                }
-                $lines[] = '\\- ' . TextUtils::escapeMarkdown((string) $item);
+            if ($items === '' || $items === null) {
+                continue;
             }
+            $sectionName = str_replace('_', ' ', (string) $section);
+            $lines[] = '';
+            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*: ' . TextUtils::escapeMarkdown((string) $items);
         }
 
         return implode("\n", $lines);
@@ -186,19 +199,28 @@ class ReportService
         }
 
         foreach ($data as $section => $items) {
-            if (!is_array($items) || empty($items)) {
+            if (is_array($items)) {
+                if (empty($items)) {
+                    continue;
+                }
+                $lines[] = '';
+                $sectionName = str_replace('_', ' ', (string)$section);
+                $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
+                foreach ($items as $item) {
+                    if (is_array($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    }
+                    // Telegram MarkdownV2 requires dashes to be escaped
+                    $lines[] = '\\- ' . TextUtils::escapeMarkdown((string)$item);
+                }
                 continue;
             }
-            $lines[] = '';
-            $sectionName = str_replace('_', ' ', (string)$section);
-            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
-            foreach ($items as $item) {
-                if (is_array($item)) {
-                    $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                }
-                // Telegram MarkdownV2 requires dashes to be escaped
-                $lines[] = '\\- ' . TextUtils::escapeMarkdown((string)$item);
+            if ($items === '' || $items === null) {
+                continue;
             }
+            $sectionName = str_replace('_', ' ', (string)$section);
+            $lines[] = '';
+            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*: ' . TextUtils::escapeMarkdown((string)$items);
         }
 
         return implode("\n", $lines);

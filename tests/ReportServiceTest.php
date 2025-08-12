@@ -172,7 +172,7 @@ class ReportServiceTest extends TestCase
         $telegram = $this->createMock(TelegramService::class);
         $factory = $this->createMock(ReportGeneratorFactory::class);
         $generator = $this->createMock(ReportGeneratorInterface::class);
-        $generator->method('summarize')->willReturn('{"overall_status":"ok","highlights":["h"],"risks":["r"]}');
+        $generator->method('summarize')->willReturn('{"overall_status":"ok","critical_chats":["chat1"],"warnings":["w"],"trending_topics":[],"sla_violations":[],"client_mood":"good","notable_quotes":[]}');
         $factory->method('create')->with('executive')->willReturn($generator);
 
         $run = strtotime('2025-07-31 04:00:00');
@@ -203,10 +203,11 @@ class ReportServiceTest extends TestCase
                     return str_contains($msg, "*Report for chat* `1`\n_{$date}_")
                         && str_contains($msg, '`Messages`: 1 \\| `Participants`: 1')
                         && str_contains($msg, '*Статус*: ok')
-                        && str_contains($msg, '*Highlights*')
-                        && str_contains($msg, '\\- h')
-                        && str_contains($msg, '*Risks*')
-                        && str_contains($msg, '\\- r');
+                        && str_contains($msg, '*Critical chats*')
+                        && str_contains($msg, '\\- chat1')
+                        && str_contains($msg, '*Warnings*')
+                        && str_contains($msg, '\\- w')
+                        && str_contains($msg, '*Client mood*: good');
                 }),
                 'MarkdownV2'
             );
@@ -254,7 +255,7 @@ class ReportServiceTest extends TestCase
         $deepseek->expects($this->once())
             ->method('summarizeReports')
             ->with(['summary'], date('Y-m-d', $run), 'executive')
-            ->willReturn('{"overall_status":"ok"}');
+            ->willReturn('{"overall_status":"ok","client_mood":"neutral","warnings":["delay"]}');
 
         $telegram->expects($this->once())
             ->method('sendMessage')
@@ -265,7 +266,10 @@ class ReportServiceTest extends TestCase
                     return str_contains($msg, "*Daily digest*\n_{$date}_")
                         && !str_contains($msg, '```json')
                         && str_contains($msg, '`Messages`: 2 \\| `Participants`: 2')
-                        && str_contains($msg, '*Статус*: ok');
+                        && str_contains($msg, '*Статус*: ok')
+                        && str_contains($msg, '*Warnings*')
+                        && str_contains($msg, '\\- delay')
+                        && str_contains($msg, '*Client mood*: neutral');
                 }),
                 'MarkdownV2'
             );
