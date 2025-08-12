@@ -90,6 +90,9 @@ class ReportService
             return;
         }
         $summary   = $data['summary'];
+        if ($style === 'executive') {
+            $summary = $this->formatExecutiveJson($summary);
+        }
         $msgs      = $data['messages'];
         $chatTitle = $data['title'];
         $stats     = $data['stats'];
@@ -130,9 +133,9 @@ class ReportService
     }
 
     /**
-     * Convert executive digest JSON into a Markdown formatted text.
+     * Convert executive-style JSON into a Markdown formatted text.
      */
-    private function formatExecutiveDigest(string $json): string
+    private function formatExecutiveJson(string $json): string
     {
         $data = json_decode($json, true);
         if (!is_array($data)) {
@@ -203,7 +206,7 @@ class ReportService
         $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
         $header = "*Дневной дайджест*\n_{$dateLine}_\n\n" . $statsLine;
         if ($style === 'executive') {
-            $body = $this->formatExecutiveDigest($digest);
+            $body = $this->formatExecutiveJson($digest);
         } else {
             $body = $digest;
         }
