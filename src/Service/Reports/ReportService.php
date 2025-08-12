@@ -90,6 +90,9 @@ class ReportService
             return;
         }
         $summary   = $data['summary'];
+        if ($style === 'executive') {
+            $summary = $this->formatExecutiveReport($summary);
+        }
         $msgs      = $data['messages'];
         $chatTitle = $data['title'];
         $stats     = $data['stats'];
@@ -100,6 +103,7 @@ class ReportService
             $recentTranscript = TextUtils::buildCleanTranscript($recent);
             try {
                 $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
+                $topic = TextUtils::escapeMarkdown($topic);
                 $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";
             } catch (Throwable $e) {
                 $this->logger->error('Failed to summarise active conversation', [
@@ -127,6 +131,42 @@ class ReportService
         }
         $this->logger->info('Daily report sent', ['chat_id' => $chatId]);
         $this->repo->markProcessed($chatId, $now);
+    }
+
+    /**
+     * Convert executive report JSON into a Markdown formatted text.
+     */
+    private function formatExecutiveReport(string $json): string
+    {
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            return TextUtils::escapeMarkdown($json);
+        }
+
+        unset($data['chat_id'], $data['date']);
+
+        $lines = [];
+        if (isset($data['overall_status'])) {
+            $lines[] = '*Статус*: ' . TextUtils::escapeMarkdown((string) $data['overall_status']);
+            unset($data['overall_status']);
+        }
+
+        foreach ($data as $section => $items) {
+            if (!is_array($items) || empty($items)) {
+                continue;
+            }
+            $lines[] = '';
+            $sectionName = str_replace('_', ' ', (string) $section);
+            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
+            foreach ($items as $item) {
+                if (is_array($item)) {
+                    $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+                $lines[] = '\\- ' . TextUtils::escapeMarkdown((string) $item);
+            }
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -200,8 +240,8 @@ class ReportService
             return;
         }
         $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
-        $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
-        $header = "*Дневной дайджест*\n_{$dateLine}_\n\n" . $statsLine;
+        $statsLine = '`Messages`: ' . $totalMessages . ' \\| `Participants`: ' . count($allUsers) . "\n\n";
+        $header = "*Daily digest*\n_{$dateLine}_\n\n" . $statsLine;
         if ($style === 'executive') {
             $body = $this->formatExecutiveDigest($digest);
         } else {
