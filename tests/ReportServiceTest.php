@@ -204,9 +204,9 @@ class ReportServiceTest extends TestCase
                         && str_contains($msg, '`Messages`: 1 \\| `Participants`: 1')
                         && str_contains($msg, '*Статус*: ok')
                         && str_contains($msg, '*Critical chats*')
-                        && str_contains($msg, '\\- chat1')
+                        && str_contains($msg, '  • chat1')
                         && str_contains($msg, '*Warnings*')
-                        && str_contains($msg, '\\- w')
+                        && str_contains($msg, '  • w')
                         && str_contains($msg, '*Client mood*: good');
                 }),
                 'MarkdownV2'
@@ -268,7 +268,7 @@ class ReportServiceTest extends TestCase
                         && str_contains($msg, '`Messages`: 2 \\| `Participants`: 2')
                         && str_contains($msg, '*Статус*: ok')
                         && str_contains($msg, '*Warnings*')
-                        && str_contains($msg, '\\- delay')
+                        && str_contains($msg, '  • delay')
                         && str_contains($msg, '*Client mood*: neutral');
                 }),
                 'MarkdownV2'
