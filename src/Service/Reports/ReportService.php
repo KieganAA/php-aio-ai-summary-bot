@@ -138,9 +138,6 @@ class ReportService
     }
 
     /**
-     * Convert executive report JSON into a Markdown formatted text.
-     */
-    /**
      * Convert a JSON report or digest into a Markdown formatted text suitable for Telegram.
      *
      * The incoming JSON is expected to contain several top level sections with either scalar
@@ -176,8 +173,7 @@ class ReportService
                     if (is_array($item)) {
                         $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                     }
-                    // Telegram MarkdownV2 requires dashes to be escaped
-                    $lines[] = '\\- ' . TextUtils::escapeMarkdown((string)$item);
+                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string)$item);
                 }
                 continue;
             }
