@@ -138,58 +138,21 @@ class ReportService
     }
 
     /**
-     * Convert executive report JSON into a Markdown formatted text.
+     * Convert a JSON report or digest into a Markdown formatted text suitable for Telegram.
+     *
+     * The incoming JSON is expected to contain several top level sections with either scalar
+     * values or lists.  Scalars are rendered as key-value pairs while lists are rendered as
+     * bullet lists.  All values are escaped for MarkdownV2.
      */
-    private function formatExecutiveReport(string $json): string
+    private function formatJsonMessage(string $json, bool $stripMeta = false): string
     {
         $data = json_decode($json, true);
         if (!is_array($data)) {
             return TextUtils::escapeMarkdown($json);
         }
 
-        unset($data['chat_id'], $data['date']);
-
-        $lines = [];
-        if (isset($data['overall_status'])) {
-            $lines[] = '*Статус*: ' . TextUtils::escapeMarkdown((string) $data['overall_status']);
-            unset($data['overall_status']);
-        }
-
-        foreach ($data as $section => $items) {
-            if (is_array($items)) {
-                if (empty($items)) {
-                    continue;
-                }
-                $lines[] = '';
-                $sectionName = str_replace('_', ' ', (string) $section);
-                $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
-                foreach ($items as $item) {
-                    if (is_array($item)) {
-                        $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                    }
-                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string) $item);
-                }
-                continue;
-            }
-            if ($items === '' || $items === null) {
-                continue;
-            }
-            $sectionName = str_replace('_', ' ', (string) $section);
-            $lines[] = '';
-            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*: ' . TextUtils::escapeMarkdown((string) $items);
-        }
-
-        return implode("\n", $lines);
-    }
-
-    /**
-     * Convert executive digest JSON into a Markdown formatted text.
-     */
-    private function formatExecutiveDigest(string $json): string
-    {
-        $data = json_decode($json, true);
-        if (!is_array($data)) {
-            return TextUtils::escapeMarkdown($json);
+        if ($stripMeta) {
+            unset($data['chat_id'], $data['date']);
         }
 
         $lines = [];
@@ -223,6 +186,19 @@ class ReportService
         }
 
         return implode("\n", $lines);
+    }
+
+    private function formatExecutiveReport(string $json): string
+    {
+        return $this->formatJsonMessage($json, true);
+    }
+
+    /**
+     * Convert executive digest JSON into a Markdown formatted text.
+     */
+    private function formatExecutiveDigest(string $json): string
+    {
+        return $this->formatJsonMessage($json);
     }
 
     public function runDigest(int $now, string $style = 'executive'): void
