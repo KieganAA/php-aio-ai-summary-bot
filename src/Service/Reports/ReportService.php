@@ -245,8 +245,104 @@ class ReportService
 
     private function formatExecutiveDigest(string $json): string
     {
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            // Фолбэк: на всякий случай распарсим как общий JSON → Markdown
+            return $this->formatJsonMessage($json);
+        }
+
+        // Если это уже агрегированная сводка (а не список саммари по чатам),
+        // отрисуем через общий форматер (он красивый для таких кейсов).
+        if (isset($data['overall_status']) || isset($data['warnings']) || isset($data['critical_chats'])) {
+            return $this->formatJsonMessage($json);
+        }
+
+        // Поддержка старого формата: {"date": "...", "chat_summaries": [ {...}, "...json..." ]}
+        if (isset($data['chat_summaries']) && is_array($data['chat_summaries'])) {
+            $lines = [];
+
+            foreach ($data['chat_summaries'] as $item) {
+                // Если пришла строка — попробуем распарсить
+                if (is_string($item)) {
+                    $decoded = json_decode($item, true);
+                    if (is_array($decoded)) {
+                        $item = $decoded;
+                    }
+                }
+
+                if (!is_array($item)) {
+                    // Совсем непредвидимый элемент — выводим как есть (экранируем)
+                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
+                    $lines[] = '';
+                    continue;
+                }
+
+                $chatId = $item['chat_id'] ?? null;
+                $status = strtolower((string)($item['overall_status'] ?? 'ok'));
+                $score = $item['health_score'] ?? null;
+                $mood = $item['client_mood'] ?? null;
+
+                $emojiMap = ['ok' => '🟢', 'warning' => '🟠', 'critical' => '🔴'];
+                $emoji = $emojiMap[$status] ?? '⚪️';
+
+                $header = "{$emoji} *Чат* ";
+                if ($chatId !== null && $chatId !== '') {
+                    $header .= '`#' . TextUtils::escapeMarkdown((string)$chatId) . '`';
+                } else {
+                    $header .= '`(без ID)`';
+                }
+                $header .= ' — `' . strtoupper($status) . '`';
+                if (is_numeric($score)) {
+                    $header .= ' \\| `Оценка`: ' . (int)$score;
+                }
+                if (is_string($mood) && $mood !== '') {
+                    $header .= ' \\| `Настроение`: ' . TextUtils::escapeMarkdown($mood);
+                }
+
+                $lines[] = $header;
+
+                // Короткие секции по топ-3 пункта
+                $sections = [
+                    'critical_chats' => 'Критично',
+                    'warnings' => 'Предупреждения',
+                    'sla_violations' => 'SLA',
+                    'trending_topics' => 'Тренды',
+                    'notable_quotes' => 'Цитаты',
+                ];
+
+                foreach ($sections as $key => $title) {
+                    if (empty($item[$key]) || !is_array($item[$key])) {
+                        continue;
+                    }
+                    $lines[] = '*' . TextUtils::escapeMarkdown($title) . '*';
+
+                    $count = 0;
+                    foreach ($item[$key] as $v) {
+                        if ($count >= 3) {
+                            break;
+                        }
+                        if (is_array($v)) {
+                            $v = json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                        }
+                        $lines[] = '• ' . TextUtils::escapeMarkdown((string)$v);
+                        $count++;
+                    }
+                }
+
+                $lines[] = ''; // пустая строка между чатами
+            }
+
+            // Уберём возможные завершающие пустые строки
+            while (!empty($lines) && trim(end($lines)) === '') {
+                array_pop($lines);
+            }
+            return implode("\n", $lines);
+        }
+
+        // Непредвиденная форма — общий форматер нас выручит
         return $this->formatJsonMessage($json);
     }
+
 
     public function runDigest(int $now, string $style = 'executive'): void
     {
