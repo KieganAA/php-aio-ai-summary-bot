@@ -290,11 +290,19 @@ class ReportService
         }
 
         try {
-            // Keep signature; enforce RU inside Deepseek implementation itself
             $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now), $style);
         } catch (Throwable $e) {
-            $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
-            return;
+            $this->logger->error('Failed to generate executive digest, falling back to classic', [
+                'error' => $e->getMessage()
+            ]);
+            // Фолбэк: classic текстовый дайджест (без JSON)
+            try {
+                $style = 'classic';
+                $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now), $style);
+            } catch (Throwable $e2) {
+                $this->logger->error('Classic digest failed as well', ['error' => $e2->getMessage()]);
+                return; // лучше не слать пустое
+            }
         }
 
         $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));

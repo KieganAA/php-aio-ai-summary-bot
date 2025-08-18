@@ -181,10 +181,11 @@ class DeepseekService
             ->setTemperature(0.15)
             ->setResponseFormat('json_object')
             ->query($system, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
         $raw = $this->runWithRetries($client);
-        return trim($this->extractContent($raw));
+        $content = $this->ensureJsonOrThrow($this->extractContent($raw));
+        return trim($content);
     }
 
     // -------------------- REDUCE (classic merge) --------------------
@@ -213,10 +214,11 @@ class DeepseekService
             ->setTemperature(0.15)
             ->setResponseFormat('json_object')
             ->query($system, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
         $raw     = $this->runWithRetries($client);
-        $content = $this->extractContent($raw);
+        $content = $this->ensureJsonOrThrow($this->extractContent($raw));
         $json    = $this->decodeJson($content);
         if ($json === null) {
             // return raw (escaped) if LLM misbehaved
@@ -325,10 +327,12 @@ class DeepseekService
             ->setTemperature(0.1)
             ->setResponseFormat('json_object')
             ->query($system, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
         $raw = $this->runWithRetries($client);
-        return trim($this->extractContent($raw)); // ReportService will shape/validate
+        $out = trim($this->ensureJsonOrThrow($this->extractContent($raw)));
+        return $out;
     }
 
     // -------------------- PUBLIC: TOPIC (RU, short) --------------------
@@ -385,10 +389,12 @@ class DeepseekService
             ->setTemperature(0.15)
             ->setResponseFormat('json_object')
             ->query($system, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
         $raw = $this->runWithRetries($client);
-        return trim($this->extractContent($raw));
+        $out = trim($this->ensureJsonOrThrow($this->extractContent($raw)));
+        return $out;
     }
 
     // -------------------- PUBLIC: MOOD (RU) --------------------
@@ -406,11 +412,12 @@ class DeepseekService
             ->setTemperature(0.0)
             ->setResponseFormat('json_object')
             ->query($system, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
         try {
             $raw = $this->runWithRetries($client);
-            $content = $this->extractContent($raw);
+            $content = $this->ensureJsonOrThrow($this->extractContent($raw));
             $data = json_decode($content, true);
 
             $mood = mb_strtolower((string)($data['mood'] ?? $data['client_mood'] ?? ''));
@@ -427,6 +434,25 @@ class DeepseekService
 
     // -------------------- JSON helpers --------------------
 
+    /** Короткая гарда для json_object: должна содержать слово 'json' в user-промпте */
+    private function jsonGuardInstruction(string $locale = 'ru'): string
+    {
+        // Короткая, чтобы не тратить токены. Содержит 'json' в нижнем регистре.
+        return $locale === 'ru'
+            ? 'Ответь только валидным json-объектом. Без текста вокруг, без Markdown, без ```.'
+            : 'Reply with valid json object only. No extra text, no Markdown, no ```.';
+    }
+
+    /** Если DeepSeek вернул служебную ошибку — бросаем исключение, чтобы верхний слой не слал ее в Telegram */
+    private function ensureJsonOrThrow(string $content): string
+    {
+        $hay = mb_strtolower($content);
+        if (str_contains($hay, 'invalid_request_error') ||
+            str_contains($hay, "prompt must contain the word 'json'")) {
+            throw new RuntimeException('DeepSeek rejected json_object request: ' . $content);
+        }
+        return $content;
+    }
     private function decodeJson(string $content): ?array
     {
         $json = json_decode($content, true);
