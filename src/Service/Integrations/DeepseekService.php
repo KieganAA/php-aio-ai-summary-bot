@@ -8,19 +8,28 @@ use GuzzleHttp\Client as HttpClient;
 use InvalidArgumentException;
 use RuntimeException;
 use Src\Service\EmployeeService;
+use Src\Util\PromptLoader;
 use Src\Util\TextUtils;
 use Src\Util\TokenCounter;
-use Src\Util\PromptLoader;
 use Throwable;
 use const CURLE_OPERATION_TIMEDOUT;
 
 /**
- * Wrapper around the DeepSeek client that provides a map‑reduce
- * style summarisation to avoid timeouts on very long transcripts.
+ * DeepseekService
+ *
+ * - RU-first prompts and outputs.
+ * - Robust to long transcripts via chunking (map-reduce).
+ * - Strict JSON for executive flows (enforced via response_format=json_object + PHP shape checks upstream).
+ * - Telegram-safe classic text (no MarkdownV2 special chars emitted by LLM; we still escape on output).
  */
 class DeepseekService
 {
     private string $apiKey;
+
+    // Tuning knobs
+    private int $chunkTokenLimit = 3000;   // per-chunk transcript tokens
+    private int $reduceTokenLimit = 3000;  // threshold to trigger chunking in executive
+    private string $timezone = 'Europe/Berlin';
 
     public function __construct(string $apiKey)
     {
@@ -28,19 +37,16 @@ class DeepseekService
         if ($apiKey === '') {
             throw new InvalidArgumentException('API key must not be empty');
         }
-
         $this->apiKey = $apiKey;
     }
 
     private function client(): DeepSeekClient
     {
-        // Build a fresh client for every request to ensure a clean state.
-        // Enable streaming and raise timeouts for long requests.
         $http = new HttpClient([
             'base_uri'        => 'https://api.deepseek.com/v3',
             'timeout'         => 600,
             'connect_timeout' => 30,
-            'headers'  => [
+            'headers' => [
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type'  => 'application/json',
             ],
@@ -49,11 +55,6 @@ class DeepseekService
         return (new DeepSeekClient($http))->withStream(true);
     }
 
-    /**
-     * Execute the API request with retries to handle transient Cloudflare
-     * 525 errors (SSL handshake failed).  A small delay is applied between
-     * attempts.
-     */
     private function runWithRetries(DeepSeekClient $client, int $maxRetries = 3): string
     {
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
@@ -80,15 +81,6 @@ class DeepseekService
         throw new RuntimeException('Failed to receive valid response from DeepSeek');
     }
 
-    /**
-     * Extract the assistant content from a DeepSeek response.
-     *
-     * The API may return Server Sent Events (SSE) when streaming is enabled.
-     * In that case the body consists of many `data: {json}` lines.  This helper
-     * collects all `delta.content` chunks and concatenates them into the final
-     * message.  If the response is a normal JSON object we just return the
-     * message content as-is.
-     */
     private function extractContent(string $raw): string
     {
         $data = json_decode($raw, true);
@@ -102,7 +94,7 @@ class DeepseekService
             if ($line === '') {
                 continue;
             }
-            if (!preg_match('/^data:\\s*(.+)$/', $line, $m)) {
+            if (!preg_match('/^data:\s*(.+)$/', $line, $m)) {
                 continue;
             }
             $payload = trim($m[1]);
@@ -121,8 +113,6 @@ class DeepseekService
     }
 
     /**
-     * Split transcript participants into our employees and client employees.
-     *
      * @return array{0: string[], 1: string[]} [our employees, client employees]
      */
     private function extractEmployeeContext(string $transcript): array
@@ -146,15 +136,7 @@ class DeepseekService
         return [$ourNames, $clientNames];
     }
 
-    private function formatNames(array $names): string
-    {
-        return empty($names) ? 'none' : implode(', ', $names);
-    }
-
-    /**
-     * Split a transcript into ~3000 token chunks.
-     */
-    private function chunkTranscript(string $transcript, int $maxTokens = 3000): array
+    private function chunkTranscript(string $transcript, int $maxTokens): array
     {
         $messages = explode("\n", trim($transcript));
         $chunks = [];
@@ -162,7 +144,9 @@ class DeepseekService
         foreach ($messages as $msg) {
             $t = TokenCounter::count($msg);
             if (TokenCounter::count($current) + $t > $maxTokens) {
-                $chunks[] = trim($current);
+                if (trim($current) !== '') {
+                    $chunks[] = trim($current);
+                }
                 $current = '';
             }
             $current .= $msg . "\n";
@@ -173,9 +157,8 @@ class DeepseekService
         return $chunks;
     }
 
-    /**
-     * Summarise a single chunk using the strict JSON prompt.
-     */
+    // -------------------- MAP (chunk) --------------------
+
     private function summarizeChunk(
         string $chunk,
         string $chatTitle,
@@ -187,15 +170,15 @@ class DeepseekService
         $system  = PromptLoader::system('chunk_summary');
         $payload = [
             'chat_title' => $chatTitle,
-            'chat_id'    => (string) $chatId,
+            'chat_id' => (string)$chatId,
             'date'       => $date,
-            'timezone'   => 'Europe/Moscow',
+            'timezone' => $this->timezone,
             'chunk_id'   => 'chunk-' . $chunkIndex,
             'transcript' => $chunk,
         ];
 
         $client
-            ->setTemperature(0.2)
+            ->setTemperature(0.15)
             ->setResponseFormat('json_object')
             ->query($system, 'system')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
@@ -204,10 +187,9 @@ class DeepseekService
         return trim($this->extractContent($raw));
     }
 
-    /**
-     * Run the heavy global pass using a concise JSON-centred prompt.
-     */
-    private function finalSummary(
+    // -------------------- REDUCE (classic merge) --------------------
+
+    private function finalSummaryClassic(
         string $input,
         string $chatTitle,
         int $chatId,
@@ -216,18 +198,19 @@ class DeepseekService
         array $clientEmployees
     ): string {
         $client  = $this->client();
-        $system  = PromptLoader::system('final_summary');
+        $system = PromptLoader::system('final_summary'); // classic merge JSON
         $payload = [
             'chat_title'       => $chatTitle,
-            'chat_id'          => (string) $chatId,
+            'chat_id' => (string)$chatId,
             'date'             => $date,
             'our_employees'    => $ourEmployees,
             'client_employees' => $clientEmployees,
-            'transcript'       => $input,
+            'chunk_summaries' => $input, // concatenated JSONs from map step
+            'hints' => $meta['signals'] ?? null,
         ];
 
         $client
-            ->setTemperature(0.2)
+            ->setTemperature(0.15)
             ->setResponseFormat('json_object')
             ->query($system, 'system')
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
@@ -236,35 +219,234 @@ class DeepseekService
         $content = $this->extractContent($raw);
         $json    = $this->decodeJson($content);
         if ($json === null) {
+            // return raw (escaped) if LLM misbehaved
             return TextUtils::escapeMarkdown($content);
         }
 
         return $this->jsonToMarkdown($json, $chatTitle, $chatId, $date);
     }
 
+    // -------------------- PUBLIC: CLASSIC --------------------
+
     /**
-     * Attempt to decode JSON that may be wrapped in additional text or code fences.
+     * Classic, RU text (Telegram-safe). Uses map-reduce for long transcripts.
+     * $meta = ['chat_title','chat_id','date','lang' => 'ru','audience' => 'team']
      */
+    public function summarizeClassic(string $transcript, array $meta): string
+    {
+        $chatTitle = (string)($meta['chat_title'] ?? '');
+        $chatId = (int)($meta['chat_id'] ?? 0);
+        $date = (string)($meta['date'] ?? date('Y-m-d'));
+
+        [$ourEmployees, $clientEmployees] = $this->extractEmployeeContext($transcript);
+
+        $chunks = $this->chunkTranscript($transcript, $this->chunkTokenLimit);
+        if (count($chunks) === 1) {
+            // no need to map; synthesize one chunk summary inline
+            $one = $this->summarizeChunk($transcript, $chatTitle, $chatId, $date, 1);
+            return $this->finalSummaryClassic($one, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
+        }
+
+        $summaries = [];
+        foreach ($chunks as $i => $chunk) {
+            try {
+                $summaries[] = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
+            } catch (Throwable $e) {
+                if ($e->getCode() === CURLE_OPERATION_TIMEDOUT && $this->chunkTokenLimit > 1000) {
+                    // shrink chunk size and retry whole classic path
+                    $this->chunkTokenLimit = (int)max(1000, $this->chunkTokenLimit / 2);
+                    return $this->summarizeClassic($transcript, $meta);
+                }
+                throw $e;
+            }
+        }
+
+        $summaryInput = implode("\n", $summaries); // concatenated JSONs
+        return $this->finalSummaryClassic($summaryInput, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
+    }
+
+    // Keep legacy name for backward-compatibility (calls classic).
+    public function summarize(
+        string  $transcript,
+        string  $chatTitle = '',
+        int     $chatId = 0,
+        ?string $date = null,
+        int     $maxTokens = 3000
+    ): string
+    {
+        $date ??= date('Y-m-d');
+        return $this->summarizeClassic($transcript, [
+            'chat_title' => $chatTitle,
+            'chat_id' => $chatId,
+            'date' => $date,
+            'lang' => 'ru',
+            'audience' => 'team',
+        ]);
+    }
+
+    // -------------------- PUBLIC: EXECUTIVE JSON --------------------
+
+    /**
+     * Executive report: returns STRICT JSON (EN keys, RU values).
+     * $meta = ['chat_title','chat_id','date','lang' => 'ru','audience' => 'executive']
+     */
+    public function executiveReport(string $transcript, array $meta): string
+    {
+        $chatTitle = (string)($meta['chat_title'] ?? '');
+        $chatId = (int)($meta['chat_id'] ?? 0);
+        $date = (string)($meta['date'] ?? date('Y-m-d'));
+
+        // For very long transcripts, compress first via chunk summaries
+        $useChunks = TokenCounter::count($transcript) > $this->reduceTokenLimit;
+        $evidence = null;
+
+        if ($useChunks) {
+            $chunks = $this->chunkTranscript($transcript, $this->chunkTokenLimit);
+            $mini = [];
+            foreach ($chunks as $i => $chunk) {
+                $mini[] = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
+            }
+            $evidence = implode("\n", $mini); // concatenated JSONs
+        }
+
+        $client = $this->client();
+        $system = PromptLoader::system('executive_report');
+        $payload = [
+            'chat_title' => $chatTitle,
+            'chat_id' => (string)$chatId,
+            'date' => $date,
+            'timezone' => $this->timezone,
+            'transcript' => $useChunks ? null : $transcript,
+            'chunk_summaries' => $useChunks ? $evidence : null,
+            'hints' => $meta['signals'] ?? null,
+        ];
+
+        $client
+            ->setTemperature(0.1)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+        $raw = $this->runWithRetries($client);
+        return trim($this->extractContent($raw)); // ReportService will shape/validate
+    }
+
+    // -------------------- PUBLIC: TOPIC (RU, short) --------------------
+
+    public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
+    {
+        $client = $this->client();
+        $system = PromptLoader::system('topic_summary');
+        $payload = [
+            'transcript' => $transcript,
+            'chat_title' => $chatTitle,
+            'chat_id' => (string)$chatId,
+        ];
+
+        $client
+            ->setTemperature(0.2)
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+        $raw = $this->runWithRetries($client);
+        $out = trim($this->extractContent($raw));
+        // Make it Telegram-safe & concise
+        $out = preg_replace('/\s+/', ' ', $out ?? '') ?? '';
+        $out = rtrim((string)$out, " .。!！?？;；");
+        return TextUtils::escapeMarkdown($out);
+    }
+
+    // -------------------- PUBLIC: DIGEST (classic text or executive JSON) --------------------
+
+    public function summarizeReports(array $reports, string $date, string $style = 'executive'): string
+    {
+        if (strtolower($style) !== 'executive') {
+            $client = $this->client();
+            $system = PromptLoader::system('digest_classic', ['date' => $date]);
+            $payload = ['chat_summaries' => $reports];
+
+            $client
+                ->setTemperature(0.2)
+                ->query($system, 'system')
+                ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+            $raw = $this->runWithRetries($client);
+            return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
+        }
+
+        $client = $this->client();
+        $system = PromptLoader::system('digest_executive');
+        $payload = [
+            'date' => $date,
+            'chat_summaries' => $reports,
+        ];
+
+        $client
+            ->setTemperature(0.15)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+        $raw = $this->runWithRetries($client);
+        return trim($this->extractContent($raw));
+    }
+
+    // -------------------- PUBLIC: MOOD (RU) --------------------
+
+    /**
+     * Returns one of: "позитивный" | "нейтральный" | "негативный".
+     */
+    public function inferMood(string $transcript): string
+    {
+        $client = $this->client();
+        $system = PromptLoader::system('mood');
+        $payload = ['transcript' => $transcript];
+
+        $client
+            ->setTemperature(0.0)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+        try {
+            $raw = $this->runWithRetries($client);
+            $content = $this->extractContent($raw);
+            $data = json_decode($content, true);
+
+            $mood = mb_strtolower((string)($data['mood'] ?? $data['client_mood'] ?? ''));
+            // Accept EN fallbacks too
+            return match (true) {
+                str_starts_with($mood, 'поз') || $mood === 'positive' => 'позитивный',
+                str_starts_with($mood, 'нег') || $mood === 'negative' => 'негативный',
+                default => 'нейтральный',
+            };
+        } catch (Throwable) {
+            return 'нейтральный';
+        }
+    }
+
+    // -------------------- JSON helpers --------------------
+
     private function decodeJson(string $content): ?array
     {
         $json = json_decode($content, true);
         if (is_array($json)) {
             return $json;
         }
-
-        if (preg_match('/{.*}/s', $content, $m)) {
+        if (preg_match('/\{.*\}/s', $content, $m)) {
             $json = json_decode($m[0], true);
             if (is_array($json)) {
                 return $json;
             }
         }
-
         return null;
     }
 
+    /**
+     * Convert classic merged JSON into Telegram-friendly MarkdownV2 text (Russian titles).
+     */
     public function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string
     {
-
         $baseSections = [
             'topics'       => 'Темы',
             'issues'       => 'Проблемы',
@@ -293,10 +475,10 @@ class DeepseekService
             $lines[]      = "*{$sectionTitle}*";
 
             if (!is_array($items) || empty($items)) {
-                $lines[] = '  • Нет';
+                $lines[] = '• Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string) $item);
+                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
                 }
             }
         }
@@ -312,15 +494,15 @@ class DeepseekService
             $sectionTitle = TextUtils::escapeMarkdown($title);
             $lines[]      = "*{$sectionTitle}*";
             if (!is_array($items) || empty($items)) {
-                $lines[] = '  • Нет';
+                $lines[] = '• Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string) $item);
+                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
                 }
             }
         }
 
-        // Append any unknown sections to keep output deterministic
+        // Append any unknown sections deterministically
         $handled = array_merge(array_keys($baseSections), array_keys($extraSections));
         foreach ($data as $key => $items) {
             if (in_array($key, $handled, true)) {
@@ -329,128 +511,17 @@ class DeepseekService
             if (is_string($items)) {
                 $items = [$items];
             }
-            $sectionTitle = TextUtils::escapeMarkdown(ucfirst($key));
+            $sectionTitle = TextUtils::escapeMarkdown(ucfirst((string)$key));
             $lines[]      = "*{$sectionTitle}*";
             if (!is_array($items) || empty($items)) {
-                $lines[] = '  • Нет';
+                $lines[] = '• Нет';
             } else {
                 foreach ($items as $item) {
-                    $lines[] = '  • ' . TextUtils::escapeMarkdown((string) $item);
+                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
                 }
             }
         }
 
         return implode("\n", $lines);
-    }
-
-    public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
-    {
-        $client  = $this->client();
-        $system  = PromptLoader::system('topic_summary');
-        $payload = [
-            'transcript' => $transcript,
-            'chat_title' => $chatTitle,
-            'chat_id'    => (string) $chatId,
-        ];
-
-        $client
-            ->setTemperature(0.2)
-            ->query($system, 'system')
-            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
-        $raw = $this->runWithRetries($client);
-        return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
-    }
-
-    public function inferMood(string $transcript): string
-    {
-        $client  = $this->client();
-        $system  = PromptLoader::system('mood');
-        $payload = [
-            'transcript' => $transcript,
-        ];
-
-        $client
-            ->setTemperature(0.0)
-            ->setResponseFormat('json_object')
-            ->query($system, 'system')
-            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
-        try {
-            $raw     = $this->runWithRetries($client);
-            $content = $this->extractContent($raw);
-            $data    = json_decode($content, true);
-            $mood    = strtolower((string)($data['mood'] ?? $data['client_mood'] ?? ''));
-            return in_array($mood, ['positive', 'neutral', 'negative'], true) ? $mood : 'neutral';
-        } catch (Throwable) {
-            return 'neutral';
-        }
-    }
-
-    public function summarize(
-        string $transcript,
-        string $chatTitle = '',
-        int $chatId = 0,
-        ?string $date = null,
-        int $maxTokens = 3000
-    ): string {
-        $date ??= date('Y-m-d');
-
-        [$ourEmployees, $clientEmployees] = $this->extractEmployeeContext($transcript);
-
-        $chunks = $this->chunkTranscript($transcript, $maxTokens);
-        if (count($chunks) === 1) {
-            return $this->finalSummary($transcript, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
-        }
-
-        $summaries = [];
-        foreach ($chunks as $i => $chunk) {
-            try {
-                $summaries[] = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
-            } catch (Throwable $e) {
-                if ($e->getCode() === CURLE_OPERATION_TIMEDOUT && $maxTokens > 100) {
-                    return $this->summarize($transcript, $chatTitle, $chatId, $date, (int)($maxTokens / 2));
-                }
-                throw $e;
-            }
-        }
-
-        $summaryInput = implode("\n", $summaries);
-        return $this->finalSummary($summaryInput, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
-    }
-
-    public function summarizeReports(array $reports, string $date, string $style = 'executive'): string
-    {
-        if (strtolower($style) !== 'executive') {
-            $client  = $this->client();
-            $system  = PromptLoader::system('digest_classic', ['date' => $date]);
-            $payload = [
-                'chat_summaries' => $reports,
-            ];
-
-            $client
-                ->setTemperature(0.2)
-                ->query($system, 'system')
-                ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
-            $raw = $this->runWithRetries($client);
-            return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
-        }
-
-        $client  = $this->client();
-        $system  = PromptLoader::system('digest_executive');
-        $payload = [
-            'date'           => $date,
-            'chat_summaries' => $reports,
-        ];
-
-        $client
-            ->setTemperature(0.2)
-            ->setResponseFormat('json_object')
-            ->query($system, 'system')
-            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
-        $raw = $this->runWithRetries($client);
-        return trim($this->extractContent($raw));
     }
 }
