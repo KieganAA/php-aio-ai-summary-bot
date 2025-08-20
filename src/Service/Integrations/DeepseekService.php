@@ -167,7 +167,7 @@ class DeepseekService
         int $chunkIndex
     ): string {
         $client  = $this->client();
-        $system  = PromptLoader::system('chunk_summary');
+        $system = PromptLoader::system('chunk_summary_v4');
         $payload = [
             'chat_title' => $chatTitle,
             'chat_id' => (string)$chatId,
@@ -199,14 +199,14 @@ class DeepseekService
         array $clientEmployees
     ): string {
         $client  = $this->client();
-        $system = PromptLoader::system('final_summary'); // classic merge JSON
+        $system = PromptLoader::system('final_summary_v4');
         $payload = [
             'chat_title'       => $chatTitle,
             'chat_id' => (string)$chatId,
             'date'             => $date,
             'our_employees'    => $ourEmployees,
             'client_employees' => $clientEmployees,
-            'chunk_summaries' => $input, // concatenated JSONs from map step
+            'chunk_summaries' => $input,
             'hints' => $meta['signals'] ?? null,
         ];
 
@@ -312,7 +312,7 @@ class DeepseekService
         }
 
         $client = $this->client();
-        $system = PromptLoader::system('executive_report');
+        $system = PromptLoader::system('executive_report_v4');
         $payload = [
             'chat_title' => $chatTitle,
             'chat_id' => (string)$chatId,
@@ -340,7 +340,7 @@ class DeepseekService
     public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
     {
         $client = $this->client();
-        $system = PromptLoader::system('topic_summary');
+        $system = PromptLoader::system('topic_summary_v2');
         $payload = [
             'transcript' => $transcript,
             'chat_title' => $chatTitle,
@@ -366,7 +366,7 @@ class DeepseekService
     {
         if (strtolower($style) !== 'executive') {
             $client = $this->client();
-            $system = PromptLoader::system('digest_classic', ['date' => $date]);
+            $system = PromptLoader::system('digest_classic_v4', ['date' => $date]);
             $payload = ['chat_summaries' => $reports];
 
             $client
@@ -379,7 +379,7 @@ class DeepseekService
         }
 
         $client = $this->client();
-        $system = PromptLoader::system('digest_executive');
+        $system = PromptLoader::system('digest_executive_v4');
         $payload = [
             'date' => $date,
             'chat_summaries' => $reports,
@@ -405,7 +405,7 @@ class DeepseekService
     public function inferMood(string $transcript): string
     {
         $client = $this->client();
-        $system = PromptLoader::system('mood');
+        $system = PromptLoader::system('mood_v2');
         $payload = ['transcript' => $transcript];
 
         $client

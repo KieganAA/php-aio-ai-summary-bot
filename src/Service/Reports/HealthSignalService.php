@@ -99,7 +99,7 @@ final class HealthSignalService
         }
 
         // Crowd noise: very many participants spikes coordination risk
-        if ($userCount >= 15) {
+        if ($userCount >= 7) {
             $score -= 5;
             $reasons[] = 'Очень много участников — повышенный риск рассинхронизации';
         }

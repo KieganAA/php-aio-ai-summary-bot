@@ -11,6 +11,7 @@ use Src\Service\Integrations\SlackService;
 use Src\Service\LoggerService;
 use Src\Service\Reports\Generators\ClassicReportGenerator;
 use Src\Service\Reports\Generators\ExecutiveReportGenerator;
+use Src\Service\Reports\Renderers\TelegramRenderer;
 use Src\Service\Telegram\TelegramService;
 use Src\Util\TextUtils;
 use Throwable;
@@ -21,6 +22,7 @@ class ReportService
     private const TG_BUDGET = 3900; // leave room for safety/escapes
 
     private LoggerInterface $logger;
+    private TelegramRenderer $renderer;
 
     public function __construct(
         private MessageRepositoryInterface $repo,
@@ -32,6 +34,7 @@ class ReportService
         private ?ReportGeneratorFactory    $factory = null,
     ) {
         $this->logger = LoggerService::getLogger();
+        $this->renderer = new TelegramRenderer();
     }
 
     private function generateSummary(int $chatId, int $now, string $style): ?array
@@ -116,74 +119,55 @@ class ReportService
         }
 
         $summary = $data['summary'];
-        if ($style === 'executive') {
-            // executive path returns JSON; convert to Telegram Markdown
-            $summary = $this->formatExecutiveReport($summary);
-        }
-
         $msgs      = $data['messages'];
         $chatTitle = $data['title'];
         $stats     = $data['stats'];
 
         $note = '';
-        $lastMsgTs = (int)($msgs[count($msgs) - 1]['message_date'] ?? 0);
-
-        if ($lastMsgTs > 0 && ($now - $lastMsgTs) < 3600) {
+        $lastMsgTs = $msgs[count($msgs) - 1]['message_date'];
+        if ($now - $lastMsgTs < 3600) {
             $recent = array_slice($msgs, -5);
             $recentTranscript = TextUtils::buildCleanTranscript($recent);
             try {
-                // Keep signature intact; ensure the Deepseek impl. itself is RU-biased
-                $topicRaw = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
-                $topic = TextUtils::escapeMarkdown($topicRaw);
-                $note = "\n\n⚠️ *Сейчас обсуждают*: {$topic}";
+                $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
+                $topic = TextUtils::escapeMarkdown($topic);
+                $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";
             } catch (Throwable $e) {
                 $this->logger->error('Failed to summarise active conversation', [
                     'chat_id' => $chatId,
                     'error'   => $e->getMessage(),
                 ]);
-                $note = "\n\n⚠️ *Активное обсуждение*";
+                $note = "\n\n⚠️ Активное обсуждение";
             }
         }
 
         $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
-        $titleLine = $this->renderChatTitle($chatId, $chatTitle);
 
-        $signals = $data['signals'] ?? null;
-        $healthLine = '';
-        if (is_array($signals)) {
-            $map = ['ok' => '🟢', 'warning' => '🟠', 'critical' => '🔴'];
-            $emoji = $map[$signals['status']] ?? '⚪️';
-            $healthLine = "{$emoji} `Статус`: " . strtoupper($signals['status']) . " \\| `Оценка`: " . (int)$signals['score'];
-            if (!empty($signals['reasons'])) {
-                $why = array_slice($signals['reasons'], 0, 2);
-                $healthLine .= "\n`Причины`: " . TextUtils::escapeMarkdown(implode('; ', $why));
+        if (strtolower($style) === 'executive') {
+            $arr = $this->decodeJsonToArray($summary);
+            if (is_array($arr)) {
+                $reportText = $this->renderer->renderExecutiveChat($arr, $chatTitle) . $note;
+            } else {
+                $reportText = $this->formatExecutiveReport($summary) . $note;
             }
+        } else {
+            $statsLine = '`Сообщений`: ' . $stats['msg_count'] . ' \\| `Участников`: ' . $stats['user_count'];
+            if (!empty($stats['top_users'])) {
+                $usernames = array_map(static fn($u) => '@' . TextUtils::escapeMarkdown($u), $stats['top_users']);
+                $statsLine .= "\n`Топ`: " . implode(', ', $usernames);
+            }
+            $header = "*Отчёт по чату* " . TextUtils::escapeMarkdown("«{$chatTitle}»") . "\n_{$dateLine}_\n\n";
+            $reportText = $header . $statsLine . "\n\n" . $summary . $note;
         }
 
-        $header = "*Отчёт по чату* — {$titleLine}\n_{$dateLine}_"
-            . ($healthLine ? "\n{$healthLine}" : '')
-            . "\n\n";
-
-        $statsLine = '`Сообщений`: ' . $stats['msg_count'] . ' \\| `Участников`: ' . $stats['user_count'];
-        if (!empty($stats['top_users'])) {
-            $usernames = array_map(fn($u) => $this->formatUsername((string)$u), $stats['top_users']);
-            $statsLine .= "\n`Топ участников`: " . implode(', ', $usernames);
-        }
-
-        $reportText = $header . $statsLine . "\n\n" . $summary . $note;
-
-        // Telegram: chunk-safe send
-        $this->sendTelegramChunked($this->summaryChatId, $reportText, 'MarkdownV2');
-
+        $this->telegram->sendMessage($this->summaryChatId, $reportText, 'MarkdownV2');
         if ($this->slack !== null) {
-            $this->slack->sendMessage($this->toPlainText($reportText));
+            $this->slack->sendMessage(strip_tags($reportText));
         }
-
         if ($this->notion !== null) {
-            $title = 'Отчёт ' . date('Y-m-d', $now) . ' #' . $chatId;
-            $this->notion->addReport($title, $this->toPlainText($summary));
+            $title = 'Report ' . date('Y-m-d', $now) . ' #' . $chatId;
+            $this->notion->addReport($title, strip_tags($summary));
         }
-
         $this->logger->info('Daily report sent', ['chat_id' => $chatId]);
         $this->repo->markProcessed($chatId, $now);
     }
@@ -388,39 +372,26 @@ class ReportService
         try {
             $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now), $style);
         } catch (Throwable $e) {
-            $this->logger->error('Failed to generate executive digest, falling back to classic', [
-                'error' => $e->getMessage()
-            ]);
-            // Фолбэк: classic текстовый дайджест (без JSON)
-            try {
-                $style = 'classic';
-                $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now), $style);
-            } catch (Throwable $e2) {
-                $this->logger->error('Classic digest failed as well', ['error' => $e2->getMessage()]);
-                return; // лучше не слать пустое
-            }
+            $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
+            return;
         }
 
-        $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
-        $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
-        $header = "*Ежедневный дайджест*\n_{$dateLine}_\n\n" . $statsLine;
+        if (strtolower($style) === 'executive') {
+            $text = $this->renderer->renderExecutiveDigest($digest);
+        } else {
+            $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
+            $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
+            $header = "*Ежедневный дайджест*\n_{$dateLine}_\n\n" . $statsLine;
+            $text = $header . $digest;
+        }
 
-        $body = $style === 'executive'
-            ? $this->formatExecutiveDigest($digest)
-            : $digest;
-
-        $text = $header . $body;
-
-        $this->sendTelegramChunked($this->summaryChatId, $text, 'MarkdownV2');
-
+        $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
         if ($this->slack !== null) {
-            $this->slack->sendMessage($this->toPlainText($text));
+            $this->slack->sendMessage(strip_tags($text));
         }
-
         if ($this->notion !== null) {
-            $this->notion->addReport('Дайджест ' . date('Y-m-d', $now), $this->toPlainText($digest));
+            $this->notion->addReport('Digest ' . date('Y-m-d', $now), strip_tags($digest));
         }
-
         $this->logger->info('Daily digest sent');
     }
 
@@ -500,5 +471,17 @@ class ReportService
         $text = str_replace(['\\|', '\\_', '\\*', '\\`', '\\[', '\\]', '\\(', '\\)', '\\#', '\\-'], ['|', '_', '*', '`', '[', ']', '(', ')', '#', '-'], $text);
         $text = str_replace(['*', '_', '`'], '', $text);
         return $text;
+    }
+
+    private function decodeJsonToArray(?string $json): ?array
+    {
+        if (!is_string($json) || $json === '') return null;
+        $data = json_decode($json, true);
+        if (is_array($data)) return $data;
+        if (preg_match('/\{.*\}/s', $json, $m)) {
+            $data = json_decode($m[0], true);
+            if (is_array($data)) return $data;
+        }
+        return null;
     }
 }
