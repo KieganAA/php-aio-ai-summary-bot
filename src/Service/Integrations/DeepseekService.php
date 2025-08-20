@@ -421,6 +421,7 @@ class DeepseekService
             $data = json_decode($content, true);
 
             $mood = mb_strtolower((string)($data['mood'] ?? $data['client_mood'] ?? ''));
+
             // Accept EN fallbacks too
             return match (true) {
                 str_starts_with($mood, 'поз') || $mood === 'positive' => 'позитивный',
