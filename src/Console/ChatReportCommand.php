@@ -25,8 +25,7 @@ class ChatReportCommand extends Command
     {
         $this
             ->addArgument('chat', InputArgument::REQUIRED, 'Chat ID')
-            ->addOption('date', null, InputOption::VALUE_OPTIONAL, 'Date in Y-m-d', date('Y-m-d'))
-            ->addOption('style', 's', InputOption::VALUE_OPTIONAL, 'Report style', 'classic');
+            ->addOption('date', null, InputOption::VALUE_OPTIONAL, 'Date in Y-m-d', date('Y-m-d'));
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -35,9 +34,8 @@ class ChatReportCommand extends Command
         $dateStr = (string)$input->getOption('date');
         $ts = strtotime($dateStr) ?: time();
 
-        $style = (string)$input->getOption('style');
-        $this->logger->info('Running report for chat', ['chat_id' => $chatId, 'date' => $dateStr, 'style' => $style]);
-        $this->report->runReportForChat($chatId, $ts, $style);
+        $this->logger->info('Running report for chat', ['chat_id' => $chatId, 'date' => $dateStr]);
+        $this->report->runReportForChat($chatId, $ts);
         $this->logger->info('Chat report finished', ['chat_id' => $chatId]);
 
         return Command::SUCCESS;

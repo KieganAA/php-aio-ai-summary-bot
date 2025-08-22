@@ -9,7 +9,6 @@ use Src\Service\Integrations\DeepseekService;
 use Src\Service\Integrations\NotionService;
 use Src\Service\Integrations\SlackService;
 use Src\Service\LoggerService;
-use Src\Service\Reports\Generators\ClassicReportGenerator;
 use Src\Service\Reports\Generators\ExecutiveReportGenerator;
 use Src\Service\Reports\Renderers\TelegramRenderer;
 use Src\Service\Telegram\TelegramService;
@@ -23,6 +22,7 @@ class ReportService
 
     private LoggerInterface $logger;
     private TelegramRenderer $renderer;
+    private ExecutiveReportGenerator $generator;
 
     public function __construct(
         private MessageRepositoryInterface $repo,
@@ -31,13 +31,14 @@ class ReportService
         private int                        $summaryChatId,
         private ?SlackService              $slack = null,
         private ?NotionService             $notion = null,
-        private ?ReportGeneratorFactory    $factory = null,
+        ?ExecutiveReportGenerator         $generator = null,
     ) {
         $this->logger = LoggerService::getLogger();
         $this->renderer = new TelegramRenderer();
+        $this->generator = $generator ?? new ExecutiveReportGenerator($this->deepseek);
     }
 
-    private function generateSummary(int $chatId, int $now, string $style): ?array
+    private function generateSummary(int $chatId, int $now): ?array
     {
         $msgs = $this->repo->getMessagesForChat($chatId, $now);
         if (empty($msgs)) {
@@ -59,24 +60,16 @@ class ReportService
 
         $chatTitle = (string)($this->repo->getChatTitle($chatId) ?? '');
 
-        // Pick generator (classic/executive) and force RU output with contextual hints
-        $generator = $this->factory?->create($style)
-            ?? (strtolower($style) === 'executive'
-                ? new ExecutiveReportGenerator($this->deepseek)
-                : new ClassicReportGenerator($this->deepseek));
-
         $signals = HealthSignalService::analyze($msgs, $now);
 
         try {
-            $summary = $generator->summarize($transcript, [
+            $summary = $this->generator->summarize($transcript, [
                 'chat_title' => $chatTitle,
                 'chat_id'    => $chatId,
                 'date'       => date('Y-m-d', $now),
-                // enforce Russian output for all LLM prompts handled by generators
-                'lang' => 'ru',
-                // optional hint for tone
-                'audience' => strtolower($style) === 'executive' ? 'executive' : 'team',
-                'signals' => $signals,
+                'lang'       => 'ru',
+                'audience'   => 'executive',
+                'signals'    => $signals,
             ]);
         } catch (Throwable $e) {
             $this->logger->error('Failed to generate summary', [
@@ -99,21 +92,20 @@ class ReportService
         ];
     }
 
-    public function runDailyReports(int $now, string $style = 'classic'): void
+    public function runDailyReports(int $now): void
     {
         $this->logger->info('Running daily reports', [
-            'day'   => date('Y-m-d', $now),
-            'style' => $style,
+            'day' => date('Y-m-d', $now),
         ]);
 
         foreach ($this->repo->listActiveChats($now) as $chatId) {
-            $this->runReportForChat($chatId, $now, $style);
+            $this->runReportForChat($chatId, $now);
         }
     }
 
-    public function runReportForChat(int $chatId, int $now, string $style = 'classic'): void
+    public function runReportForChat(int $chatId, int $now): void
     {
-        $data = $this->generateSummary($chatId, $now, $style);
+        $data = $this->generateSummary($chatId, $now);
         if ($data === null) {
             return;
         }
@@ -141,23 +133,11 @@ class ReportService
             }
         }
 
-        $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
-
-        if (strtolower($style) === 'executive') {
-            $arr = $this->decodeJsonToArray($summary);
-            if (is_array($arr)) {
-                $reportText = $this->renderer->renderExecutiveChat($arr, $chatTitle) . $note;
-            } else {
-                $reportText = $this->formatExecutiveReport($summary) . $note;
-            }
+        $arr = $this->decodeJsonToArray($summary);
+        if (is_array($arr)) {
+            $reportText = $this->renderer->renderExecutiveChat($arr, $chatTitle) . $note;
         } else {
-            $statsLine = '`Сообщений`: ' . $stats['msg_count'] . ' \\| `Участников`: ' . $stats['user_count'];
-            if (!empty($stats['top_users'])) {
-                $usernames = array_map(static fn($u) => '@' . TextUtils::escapeMarkdown($u), $stats['top_users']);
-                $statsLine .= "\n`Топ`: " . implode(', ', $usernames);
-            }
-            $header = "*Отчёт по чату* " . TextUtils::escapeMarkdown("«{$chatTitle}»") . "\n_{$dateLine}_\n\n";
-            $reportText = $header . $statsLine . "\n\n" . $summary . $note;
+            $reportText = $this->formatExecutiveReport($summary) . $note;
         }
 
         $this->telegram->sendMessage($this->summaryChatId, $reportText, 'MarkdownV2');
@@ -328,11 +308,10 @@ class ReportService
     }
 
 
-    public function runDigest(int $now, string $style = 'executive'): void
+    public function runDigest(int $now): void
     {
         $this->logger->info('Running daily digest', [
-            'day'   => date('Y-m-d', $now),
-            'style' => $style,
+            'day' => date('Y-m-d', $now),
         ]);
 
         $reports       = [];
@@ -340,7 +319,7 @@ class ReportService
         $allUsers      = [];
 
         foreach ($this->repo->listActiveChats($now) as $chatId) {
-            $data = $this->generateSummary($chatId, $now, $style);
+            $data = $this->generateSummary($chatId, $now);
             if ($data === null) {
                 continue;
             }
@@ -370,20 +349,12 @@ class ReportService
         }
 
         try {
-            $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now), $style);
+            $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now));
         } catch (Throwable $e) {
             $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
             return;
         }
-
-        if (strtolower($style) === 'executive') {
-            $text = $this->renderer->renderExecutiveDigest($digest);
-        } else {
-            $dateLine = TextUtils::escapeMarkdown(date('Y-m-d', $now));
-            $statsLine = '`Сообщений`: ' . $totalMessages . ' \\| `Участников`: ' . count($allUsers) . "\n\n";
-            $header = "*Ежедневный дайджест*\n_{$dateLine}_\n\n" . $statsLine;
-            $text = $header . $digest;
-        }
+        $text = $this->renderer->renderExecutiveDigest($digest);
 
         $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
         if ($this->slack !== null) {

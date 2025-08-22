@@ -15,7 +15,7 @@ class DailyDigestCommandTest extends TestCase
         $report = $this->createMock(ReportService::class);
         $report->expects($this->once())
             ->method('runDigest')
-            ->with($this->isType('int'), 'executive');
+            ->with($this->isType('int'));
 
         $command = new DailyDigestCommand($report, new NullLogger());
         $application = new Application();
@@ -23,22 +23,6 @@ class DailyDigestCommandTest extends TestCase
 
         $tester = new CommandTester($application->find('app:daily-digest'));
         $tester->execute([]);
-        $tester->assertCommandIsSuccessful();
-    }
-
-    public function testRunsDigestServiceWithStyle(): void
-    {
-        $report = $this->createMock(ReportService::class);
-        $report->expects($this->once())
-            ->method('runDigest')
-            ->with($this->isType('int'), 'classic');
-
-        $command = new DailyDigestCommand($report, new NullLogger());
-        $application = new Application();
-        $application->add($command);
-
-        $tester = new CommandTester($application->find('app:daily-digest'));
-        $tester->execute(['--style' => 'classic']);
         $tester->assertCommandIsSuccessful();
     }
 }

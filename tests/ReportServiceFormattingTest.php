@@ -33,7 +33,7 @@ class ReportServiceFormattingTest extends TestCase
         $method = $ref->getMethod('formatExecutiveReport');
         $method->setAccessible(true);
 
-        $expected = "*Статус*: ok\n\n*Warnings*\n\\- test\n\n*Client mood*: happy";
+        $expected = "*Статус*: ok\n\n*Warnings*\n• test\n\n*Client mood*: happy";
         $this->assertSame($expected, $method->invoke($service, $json));
     }
 
@@ -49,7 +49,7 @@ class ReportServiceFormattingTest extends TestCase
         $method = $ref->getMethod('formatExecutiveDigest');
         $method->setAccessible(true);
 
-        $expected = "*Статус*: warning\n\n*Issues*\n\\- a\n\\- b";
+        $expected = "*Статус*: warning\n\n*Issues*\n• a\n• b";
         $this->assertSame($expected, $method->invoke($service, $json));
     }
 }
