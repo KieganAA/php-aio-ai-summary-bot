@@ -15,7 +15,7 @@ class DailyReportCommandTest extends TestCase
         $report = $this->createMock(ReportService::class);
         $report->expects($this->once())
             ->method('runDailyReports')
-            ->with($this->isType('int'), 'classic');
+            ->with($this->isType('int'));
 
         $command = new DailyReportCommand($report, new NullLogger());
         $application = new Application();
@@ -23,22 +23,6 @@ class DailyReportCommandTest extends TestCase
 
         $tester = new CommandTester($application->find('app:daily-report'));
         $tester->execute([]);
-        $tester->assertCommandIsSuccessful();
-    }
-
-    public function testRunsReportServiceWithStyle(): void
-    {
-        $report = $this->createMock(ReportService::class);
-        $report->expects($this->once())
-            ->method('runDailyReports')
-            ->with($this->isType('int'), 'executive');
-
-        $command = new DailyReportCommand($report, new NullLogger());
-        $application = new Application();
-        $application->add($command);
-
-        $tester = new CommandTester($application->find('app:daily-report'));
-        $tester->execute(['--style' => 'executive']);
         $tester->assertCommandIsSuccessful();
     }
 }

@@ -20,7 +20,6 @@ use const CURLE_OPERATION_TIMEDOUT;
  * - RU-first prompts and outputs.
  * - Robust to long transcripts via chunking (map-reduce).
  * - Strict JSON for executive flows (enforced via response_format=json_object + PHP shape checks upstream).
- * - Telegram-safe classic text (no MarkdownV2 special chars emitted by LLM; we still escape on output).
  */
 class DeepseekService
 {
@@ -188,104 +187,6 @@ class DeepseekService
         return trim($content);
     }
 
-    // -------------------- REDUCE (classic merge) --------------------
-
-    private function finalSummaryClassic(
-        string $input,
-        string $chatTitle,
-        int $chatId,
-        string $date,
-        array $ourEmployees,
-        array $clientEmployees
-    ): string {
-        $client  = $this->client();
-        $system = PromptLoader::system('final_summary_v4');
-        $payload = [
-            'chat_title'       => $chatTitle,
-            'chat_id' => (string)$chatId,
-            'date'             => $date,
-            'our_employees'    => $ourEmployees,
-            'client_employees' => $clientEmployees,
-            'chunk_summaries' => $input,
-            'hints' => $meta['signals'] ?? null,
-        ];
-
-        $client
-            ->setTemperature(0.15)
-            ->setResponseFormat('json_object')
-            ->query($system, 'system')
-            ->query($this->jsonGuardInstruction('ru'), 'user')
-            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
-        $raw     = $this->runWithRetries($client);
-        $content = $this->ensureJsonOrThrow($this->extractContent($raw));
-        $json    = $this->decodeJson($content);
-        if ($json === null) {
-            // return raw (escaped) if LLM misbehaved
-            return TextUtils::escapeMarkdown($content);
-        }
-
-        return $this->jsonToMarkdown($json, $chatTitle, $chatId, $date);
-    }
-
-    // -------------------- PUBLIC: CLASSIC --------------------
-
-    /**
-     * Classic, RU text (Telegram-safe). Uses map-reduce for long transcripts.
-     * $meta = ['chat_title','chat_id','date','lang' => 'ru','audience' => 'team']
-     */
-    public function summarizeClassic(string $transcript, array $meta): string
-    {
-        $chatTitle = (string)($meta['chat_title'] ?? '');
-        $chatId = (int)($meta['chat_id'] ?? 0);
-        $date = (string)($meta['date'] ?? date('Y-m-d'));
-
-        [$ourEmployees, $clientEmployees] = $this->extractEmployeeContext($transcript);
-
-        $chunks = $this->chunkTranscript($transcript, $this->chunkTokenLimit);
-        if (count($chunks) === 1) {
-            // no need to map; synthesize one chunk summary inline
-            $one = $this->summarizeChunk($transcript, $chatTitle, $chatId, $date, 1);
-            return $this->finalSummaryClassic($one, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
-        }
-
-        $summaries = [];
-        foreach ($chunks as $i => $chunk) {
-            try {
-                $summaries[] = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
-            } catch (Throwable $e) {
-                if ($e->getCode() === CURLE_OPERATION_TIMEDOUT && $this->chunkTokenLimit > 1000) {
-                    // shrink chunk size and retry whole classic path
-                    $this->chunkTokenLimit = (int)max(1000, $this->chunkTokenLimit / 2);
-                    return $this->summarizeClassic($transcript, $meta);
-                }
-                throw $e;
-            }
-        }
-
-        $summaryInput = implode("\n", $summaries); // concatenated JSONs
-        return $this->finalSummaryClassic($summaryInput, $chatTitle, $chatId, $date, $ourEmployees, $clientEmployees);
-    }
-
-    // Keep legacy name for backward-compatibility (calls classic).
-    public function summarize(
-        string  $transcript,
-        string  $chatTitle = '',
-        int     $chatId = 0,
-        ?string $date = null,
-        int     $maxTokens = 3000
-    ): string
-    {
-        $date ??= date('Y-m-d');
-        return $this->summarizeClassic($transcript, [
-            'chat_title' => $chatTitle,
-            'chat_id' => $chatId,
-            'date' => $date,
-            'lang' => 'ru',
-            'audience' => 'team',
-        ]);
-    }
-
     // -------------------- PUBLIC: EXECUTIVE JSON --------------------
 
     /**
@@ -360,24 +261,10 @@ class DeepseekService
         return TextUtils::escapeMarkdown($out);
     }
 
-    // -------------------- PUBLIC: DIGEST (classic text or executive JSON) --------------------
+    // -------------------- PUBLIC: DIGEST (executive JSON) --------------------
 
-    public function summarizeReports(array $reports, string $date, string $style = 'executive'): string
+    public function summarizeReports(array $reports, string $date): string
     {
-        if (strtolower($style) !== 'executive') {
-            $client = $this->client();
-            $system = PromptLoader::system('digest_classic_v4', ['date' => $date]);
-            $payload = ['chat_summaries' => $reports];
-
-            $client
-                ->setTemperature(0.2)
-                ->query($system, 'system')
-                ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
-            $raw = $this->runWithRetries($client);
-            return TextUtils::escapeMarkdown(trim($this->extractContent($raw)));
-        }
-
         $client = $this->client();
         $system = PromptLoader::system('digest_executive_v4');
         $payload = [
@@ -469,86 +356,4 @@ class DeepseekService
         return null;
     }
 
-    /**
-     * Convert classic merged JSON into Telegram-friendly MarkdownV2 text (Russian titles).
-     */
-    public function jsonToMarkdown(array $data, string $chatTitle, int $chatId, string $date): string
-    {
-        $baseSections = [
-            'topics'       => 'Темы',
-            'issues'       => 'Проблемы',
-            'decisions'    => 'Решения',
-            'participants' => 'Участники',
-        ];
-        $extraSections = [
-            'actions'      => 'Действия',
-            'events'       => 'События',
-            'blockers'     => 'Блокеры',
-            'questions'    => 'Вопросы',
-        ];
-
-        $lines = [];
-        $titleWithId = TextUtils::escapeMarkdown("{$chatTitle} (ID {$chatId})");
-        $dateLine    = TextUtils::escapeMarkdown($date);
-        $lines[]     = "*{$titleWithId}* — {$dateLine}";
-
-        foreach ($baseSections as $key => $title) {
-            $items = $data[$key] ?? [];
-            if (is_string($items)) {
-                $items = [$items];
-            }
-
-            $sectionTitle = TextUtils::escapeMarkdown($title);
-            $lines[]      = "*{$sectionTitle}*";
-
-            if (!is_array($items) || empty($items)) {
-                $lines[] = '• Нет';
-            } else {
-                foreach ($items as $item) {
-                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
-                }
-            }
-        }
-
-        foreach ($extraSections as $key => $title) {
-            if (!array_key_exists($key, $data)) {
-                continue;
-            }
-            $items = $data[$key];
-            if (is_string($items)) {
-                $items = [$items];
-            }
-            $sectionTitle = TextUtils::escapeMarkdown($title);
-            $lines[]      = "*{$sectionTitle}*";
-            if (!is_array($items) || empty($items)) {
-                $lines[] = '• Нет';
-            } else {
-                foreach ($items as $item) {
-                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
-                }
-            }
-        }
-
-        // Append any unknown sections deterministically
-        $handled = array_merge(array_keys($baseSections), array_keys($extraSections));
-        foreach ($data as $key => $items) {
-            if (in_array($key, $handled, true)) {
-                continue;
-            }
-            if (is_string($items)) {
-                $items = [$items];
-            }
-            $sectionTitle = TextUtils::escapeMarkdown(ucfirst((string)$key));
-            $lines[]      = "*{$sectionTitle}*";
-            if (!is_array($items) || empty($items)) {
-                $lines[] = '• Нет';
-            } else {
-                foreach ($items as $item) {
-                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
-                }
-            }
-        }
-
-        return implode("\n", $lines);
-    }
 }

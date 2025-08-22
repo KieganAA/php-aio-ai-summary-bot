@@ -2,25 +2,13 @@ chat-report:
 	@echo "Running ChatReport Command"
 	php bin/console app:chat-report
 
-chat-report-ex:
-	@echo "Running ChatReport Command"
-	php bin/console app:chat-report --style=executive
-
 daily-report:
 	@echo "Running DailyReport Command"
 	php bin/console app:daily-report
 
-daily-report-ex:
-	@echo "Running DailyReport Command"
-	php bin/console app:daily-report --style=executive
-
 daily-digest:
 	@echo "Running DailyDigest Command"
 	php bin/console app:daily-digest
-
-daily-digest-ex:
-	@echo "Running DailyDigest Command"
-	php bin/console app:daily-digest --style=executive
 
 list-chats:
 	@echo "Running ListChats Command"

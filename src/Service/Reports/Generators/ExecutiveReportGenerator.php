@@ -5,10 +5,8 @@ namespace Src\Service\Reports\Generators;
 
 use RuntimeException;
 use Src\Service\Integrations\DeepseekService;
-use Src\Service\Reports\ReportGeneratorInterface;
 use Throwable;
-
-class ExecutiveReportGenerator implements ReportGeneratorInterface
+class ExecutiveReportGenerator
 {
     private const REQUIRED_KEYS = [
         'chat_id', 'date', 'overall_status',
@@ -54,11 +52,6 @@ class ExecutiveReportGenerator implements ReportGeneratorInterface
             ];
             return json_encode($fallback, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         }
-    }
-
-    public function getStyle(): string
-    {
-        return 'executive';
     }
 
     // ---------- helpers ----------
