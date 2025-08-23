@@ -24,17 +24,12 @@ final class JsonShape
         ]);
     }
 
-    public static function assertDigest(array $d): void
-    {
-        self::must($d, [
-            'date', 'verdict', 'scoreboard', 'score_avg', 'top_attention', 'themes', 'risks', 'sla', 'quality_flags', 'trimming_report'
-        ]);
-    }
-
     private static function must(array $d, array $keys): void
     {
         foreach ($keys as $k) {
-            if (!array_key_exists($k, $d)) throw new RuntimeException('Missing key: ' . $k);
+            if (!array_key_exists($k, $d)) {
+                throw new RuntimeException('Missing key: ' . $k);
+            }
         }
     }
 }

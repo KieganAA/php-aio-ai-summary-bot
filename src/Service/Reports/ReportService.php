@@ -38,7 +38,7 @@ class ReportService
         $this->generator = $generator ?? new ExecutiveReportGenerator($this->deepseek);
     }
 
-    /** Никогда не возвращает null: всегда есть JSON под новую схему */
+    /** Всегда возвращает JSON под новую схему (через строгий pipeline/скелет) */
     private function generateSummary(int $chatId, int $now): array
     {
         $msgs = $this->repo->getMessagesForChat($chatId, $now);
@@ -49,7 +49,7 @@ class ReportService
                 'chat_id' => $chatId,
                 'date' => date('Y-m-d', $now),
                 'verdict' => 'ok',
-                'health_score' => 0,
+                'health_score' => 80,
                 'client_mood' => 'нейтральный',
                 'summary' => 'Сообщений за день не найдено.',
                 'incidents' => [],
@@ -88,10 +88,9 @@ class ReportService
                 'audience'   => 'executive',
             ]);
         } catch (Throwable $e) {
-            // Из-за LLM-repair сюда фактически не попадём. На всякий случай — пустой каркас.
             $this->logger->error('Summary hard fail', ['chat_id' => $chatId, 'error' => $e->getMessage()]);
             $summary = json_encode([
-                'chat_id' => $chatId, 'date' => date('Y-m-d', $now), 'verdict' => 'ok', 'health_score' => 0,
+                'chat_id' => $chatId, 'date' => date('Y-m-d', $now), 'verdict' => 'ok', 'health_score' => 80,
                 'client_mood' => 'нейтральный', 'summary' => 'Данные недоступны.',
                 'incidents' => [], 'warnings' => [], 'decisions' => [], 'open_questions' => [],
                 'sla' => ['breaches' => [], 'at_risk' => []], 'timeline' => [], 'notable_quotes' => [],
@@ -107,6 +106,7 @@ class ReportService
         ];
     }
 
+    /** Отчёт по одному чату */
     public function runReportForChat(int $chatId, int $now): void
     {
         $data = $this->generateSummary($chatId, $now);
@@ -125,7 +125,7 @@ class ReportService
                     $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
                     $topic = TextUtils::escapeMarkdown($topic);
                     $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";
-                } catch (Throwable $e) {
+                } catch (Throwable) {
                     $note = "\n\n⚠️ Активное обсуждение";
                 }
             }
@@ -141,173 +141,26 @@ class ReportService
         $this->repo->markProcessed($chatId, $now);
     }
 
-    private function formatJsonMessage(string $json, bool $stripMeta = false): string
-    {
-        $data = json_decode($json, true);
-        if (!is_array($data)) {
-            return TextUtils::escapeMarkdown($json);
-        }
-
-        if ($stripMeta) {
-            unset($data['chat_id'], $data['date']);
-        }
-
-        $lines = [];
-        if (isset($data['overall_status'])) {
-            $lines[] = '*Статус*: ' . TextUtils::escapeMarkdown((string)$data['overall_status']);
-            unset($data['overall_status']);
-        }
-
-        foreach ($data as $section => $items) {
-            if (is_array($items)) {
-                if (empty($items)) {
-                    continue;
-                }
-                $lines[] = '';
-                $sectionName = str_replace('_', ' ', (string)$section);
-                $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*';
-                foreach ($items as $item) {
-                    if (is_array($item)) {
-                        $item = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                    }
-                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
-                }
-                continue;
-            }
-
-            if ($items === '' || $items === null) {
-                continue;
-            }
-
-            $sectionName = str_replace('_', ' ', (string)$section);
-            $lines[] = '';
-            $lines[] = '*' . TextUtils::escapeMarkdown(ucfirst($sectionName)) . '*: ' . TextUtils::escapeMarkdown((string)$items);
-        }
-
-        return implode("\n", $lines);
-    }
-
-    private function formatExecutiveReport(string $json): string
-    {
-        return $this->formatJsonMessage($json, true);
-    }
-
-    private function formatExecutiveDigest(string $json): string
-    {
-        $data = json_decode($json, true);
-        if (!is_array($data)) {
-            return $this->formatJsonMessage($json);
-        }
-
-        if (isset($data['overall_status']) || isset($data['warnings']) || isset($data['critical_chats'])) {
-            return $this->formatJsonMessage($json);
-        }
-
-        if (isset($data['chat_summaries']) && is_array($data['chat_summaries'])) {
-            $lines = [];
-
-            foreach ($data['chat_summaries'] as $item) {
-                if (is_string($item)) {
-                    $decoded = json_decode($item, true);
-                    if (is_array($decoded)) {
-                        $item = $decoded;
-                    }
-                }
-
-                if (!is_array($item)) {
-                    $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
-                    $lines[] = '';
-                    continue;
-                }
-
-                $chatId = $item['chat_id'] ?? null;
-                $status = strtolower((string)($item['overall_status'] ?? 'ok'));
-                $score = $item['health_score'] ?? null;
-                $mood = $item['client_mood'] ?? null;
-
-                $emojiMap = ['ok' => '🟢', 'warning' => '🟠', 'critical' => '🔴'];
-                $emoji = $emojiMap[$status] ?? '⚪️';
-
-                $header = "{$emoji} *Чат* ";
-                if ($chatId !== null && $chatId !== '') {
-                    $header .= '`#' . TextUtils::escapeMarkdown((string)$chatId) . '`';
-                } else {
-                    $header .= '`(без ID)`';
-                }
-                $header .= ' — `' . strtoupper($status) . '`';
-                if (is_numeric($score)) {
-                    $header .= ' \\| `Оценка`: ' . (int)$score;
-                }
-                if (is_string($mood) && $mood !== '') {
-                    $header .= ' \\| `Настроение`: ' . TextUtils::escapeMarkdown($mood);
-                }
-
-                $lines[] = $header;
-
-                $sections = [
-                    'critical_chats' => 'Критично',
-                    'warnings' => 'Предупреждения',
-                    'sla_violations' => 'SLA',
-                    'trending_topics' => 'Тренды',
-                    'notable_quotes' => 'Цитаты',
-                ];
-
-                foreach ($sections as $key => $title) {
-                    if (empty($item[$key]) || !is_array($item[$key])) {
-                        continue;
-                    }
-                    $lines[] = '*' . TextUtils::escapeMarkdown($title) . '*';
-
-                    $count = 0;
-                    foreach ($item[$key] as $v) {
-                        if ($count >= 3) {
-                            break;
-                        }
-                        if (is_array($v)) {
-                            $v = json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                        }
-                        $lines[] = '• ' . TextUtils::escapeMarkdown((string)$v);
-                        $count++;
-                    }
-                }
-
-                $lines[] = '';
-            }
-
-            while (!empty($lines) && trim(end($lines)) === '') {
-                array_pop($lines);
-            }
-            return implode("\n", $lines);
-        }
-
-        return $this->formatJsonMessage($json);
-    }
-
+    /** Дайджест дня: шапка + все чаты ниже */
     public function runDigest(int $now): void
     {
-        $this->logger->info('Running daily digest', [
-            'day' => date('Y-m-d', $now),
-        ]);
+        $this->logger->info('Running daily digest', ['day' => date('Y-m-d', $now)]);
 
-        $reports       = [];
-        $totalMessages = 0;
-        $allUsers      = [];
+        $reportsJson = [];
+        $reportsArr = [];
+        $titlesByChat = [];
 
         foreach ($this->repo->listActiveChats($now) as $chatId) {
             $data = $this->generateSummary($chatId, $now);
-            if ($data === null) {
-                continue;
-            }
+            if ($data === null) continue;
 
             $summary = $data['summary'];
-            $reports[] = $summary;
+            $reportsJson[] = $summary;
 
-            foreach ($data['messages'] as $m) {
-                $totalMessages++;
-                $u = (string)($m['from_user'] ?? '');
-                if ($u !== '') {
-                    $allUsers[$u] = true;
-                }
+            $arr = json_decode($summary, true);
+            if (is_array($arr)) {
+                $reportsArr[] = $arr;
+                $titlesByChat[(string)($arr['chat_id'] ?? $chatId)] = (string)($data['title'] ?? '');
             }
 
             if ($this->notion !== null) {
@@ -316,55 +169,36 @@ class ReportService
             }
         }
 
-        if (empty($reports)) {
+        if (empty($reportsJson)) {
             return;
         }
 
         try {
-            $digest = $this->deepseek->summarizeReports($reports, date('Y-m-d', $now));
+            $digest = $this->deepseek->summarizeReports($reportsJson, date('Y-m-d', $now));
         } catch (Throwable $e) {
             $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
             return;
         }
-        $text = $this->renderer->renderExecutiveDigest($digest);
+
+        // Шапка дня + полноценные отчёты по всем чатам
+        $text = $this->renderer->renderDigestWithChats($digest, $reportsArr, $titlesByChat);
 
         $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
-        if ($this->slack !== null) {
-            $this->slack->sendMessage(strip_tags($text));
-        }
-        if ($this->notion !== null) {
-            $this->notion->addReport('Digest ' . date('Y-m-d', $now), strip_tags($digest));
-        }
+        if ($this->slack !== null) $this->slack->sendMessage(strip_tags($text));
+        if ($this->notion !== null) $this->notion->addReport('Digest ' . date('Y-m-d', $now), strip_tags($digest));
+
         $this->logger->info('Daily digest sent');
     }
 
-    private function renderChatTitle(int $chatId, string $chatTitle): string
-    {
-        $title = trim($chatTitle);
-        if ($title !== '') {
-            return '*' . TextUtils::escapeMarkdown($title) . '*';
-        }
-        return '`#' . $chatId . '`';
-    }
-
-    private function formatUsername(string $raw): string
-    {
-        $u = ltrim(trim($raw), '@');
-        if ($u === '') {
-            return '';
-        }
-        return '@' . TextUtils::escapeMarkdown($u);
-    }
+    // --- helpers ---
 
     private function sendTelegramChunked(int $chatId, string $text, string $parseMode): void
     {
-        // Fast path
         if (mb_strlen($text, 'UTF-8') <= self::TG_MAX) {
             $this->telegram->sendMessage($chatId, $text, $parseMode);
             return;
         }
 
-        // Split by blank lines, then accumulate up to budget
         $parts = preg_split("/\n{2,}/u", $text) ?: [$text];
         $buffer = '';
 
@@ -383,7 +217,6 @@ class ReportService
                 if (mb_strlen($p, 'UTF-8') <= self::TG_BUDGET) {
                     $buffer = $p;
                 } else {
-                    // Extremely long paragraph: hard split by line
                     $lines = preg_split("/\n/u", $p) ?: [$p];
                     $chunk = '';
                     foreach ($lines as $line) {
@@ -395,9 +228,7 @@ class ReportService
                             $chunk = $line;
                         }
                     }
-                    if ($chunk !== '') {
-                        $buffer = $chunk;
-                    }
+                    if ($chunk !== '') $buffer = $chunk;
                 }
             }
         }
@@ -406,22 +237,9 @@ class ReportService
 
     private function toPlainText(string $markdownV2): string
     {
-        // Minimal markdown cleanup for Slack/Notion: strip common formatting chars and escapes.
         $text = $markdownV2;
         $text = str_replace(['\\|', '\\_', '\\*', '\\`', '\\[', '\\]', '\\(', '\\)', '\\#', '\\-'], ['|', '_', '*', '`', '[', ']', '(', ')', '#', '-'], $text);
         $text = str_replace(['*', '_', '`'], '', $text);
         return $text;
-    }
-
-    private function decodeJsonToArray(?string $json): ?array
-    {
-        if (!is_string($json) || $json === '') return null;
-        $data = json_decode($json, true);
-        if (is_array($data)) return $data;
-        if (preg_match('/\{.*\}/s', $json, $m)) {
-            $data = json_decode($m[0], true);
-            if (is_array($data)) return $data;
-        }
-        return null;
     }
 }
