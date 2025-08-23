@@ -15,13 +15,6 @@ final class JsonShape
         ]);
     }
 
-    private static function must(array $d, array $keys): void
-    {
-        foreach ($keys as $k) {
-            if (!array_key_exists($k, $d)) throw new RuntimeException('Missing key: ' . $k);
-        }
-    }
-
     public static function assertExecutive(array $d): void
     {
         self::must($d, [
@@ -29,5 +22,19 @@ final class JsonShape
             'decisions', 'open_questions', 'sla', 'timeline', 'notable_quotes', 'quality_flags', 'trimming_report',
             'char_counts', 'tokens_estimate'
         ]);
+    }
+
+    public static function assertDigest(array $d): void
+    {
+        self::must($d, [
+            'date', 'verdict', 'scoreboard', 'score_avg', 'top_attention', 'themes', 'risks', 'sla', 'quality_flags', 'trimming_report'
+        ]);
+    }
+
+    private static function must(array $d, array $keys): void
+    {
+        foreach ($keys as $k) {
+            if (!array_key_exists($k, $d)) throw new RuntimeException('Missing key: ' . $k);
+        }
     }
 }
