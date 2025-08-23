@@ -128,36 +128,65 @@ PROMPT,
 YOU ARE: Executive reporter для одного чата/дня. RU-first, EN-ключи. Strict JSON only.
 
 INPUT:
-{"chat_id": number, "date": "YYYY-MM-DD", "timezone": string,
- "merged": <chunk_summary object>, "limits": {"list_max": 7, "quote_max_words": 12}}
+{
+  "chat_id": number,
+  "date": "YYYY-MM-DD",
+  "timezone": string,
+  "merged": <chunk_summary object>,
+  "limits": {"list_max": 7, "quote_max_words": 12}
+}
 
 OBJECTIVE:
-Короткий управленческий отчёт: инциденты, риски, решения, SLA, настроение клиента, открытые вопросы — БЕЗ выдумывания.
+Короткий управленческий отчёт: инциденты, риски, решения, SLA, настроение клиента, открытые вопросы — БЕЗ выдумывания, с привязкой к исходным сообщениям.
 
 STRICTNESS / ANTI-FABRICATION:
 - Основание — ТОЛЬКО поля входного "merged" (highlights/issues/decisions/actions/blockers/questions/timeline/evidence_quotes).
 - НЕЛЬЗЯ добавлять факты не из merged. Нет данных → пустые списки.
-- Заполняй МАКСИМАЛЬНО все списки (до limits.list_max), если есть хоть какие-то сигналы в merged.
+- Заполняй МАКСИМАЛЬНО все списки (до limits.list_max), если есть сигналы в merged.
 - summary: одна строка ≤280 символов, RU, резюме дня ТОЛЬКО на основе merged (не пустая, если есть хоть что-то).
-- incidents: формируй не более 5; базируйся на issues/blockers/timeline; поля:
+
+MESSAGE LINKING (важно):
+- Если можно однозначно сопоставить пункту исходное сообщение — ставь message_id; иначе null (НЕ придумывать).
+- Используй merged.evidence_quotes[].message_id как первоисточники.
+- Для «timeline», «warnings», «decisions», «open_questions», «notable_quotes» добавляй *_meta с текстом и message_id.
+
+INCIDENTS (с опорой на issues/blockers/timeline/evidence_quotes):
+- Не более 5 объектов.
+- Поля:
   - title: кратко по сути проблемы
   - impact: чем это грозит/затрагивает (из данных)
-  - status: "resolved" если явно закрыто или явный фикс; иначе "unresolved"
-  - severity: "low|medium|high" по силе воздействия (по данным)
+  - status: "resolved" при явном фиксировании/закрытии; иначе "unresolved"
+  - severity: "low"|"medium"|"high"
+  - message_id: number|null — якорное сообщение инцидента (если очевидно)
   - evidence: до 3 коротких цитат (≤12 слов) из merged.evidence_quotes[].quote
-- warnings: значимые риски/предупреждения, не вошедшие в incidents.
-- decisions: принятые решения (из merged.decisions/таймлайна), до 7.
-- open_questions: открытые вопросы (из merged.questions), до 7.
-- sla: {"breaches":[], "at_risk":[]} — на основе issues/timeline, если есть поводы.
-- timeline: до 7 ключевых событий (из merged.timeline).
-- notable_quotes: до 3 прямых коротких цитат из merged.evidence_quotes[].quote (без редактирования).
+  - evidence_refs: до 3 объектов {"message_id": number|null, "quote": "string (≤12 слов)"}
+
+OTHER LISTS:
+- warnings: значимые риски, не вошедшие в incidents.
+- decisions: принятые решения.
+- open_questions: открытые вопросы.
+- timeline: ключевые события (до 7).
+- notable_quotes: до 3 прямых цитат из merged.evidence_quotes[].quote (без редактирования).
+- Для всех списков добавляй *_meta c message_id там, где это возможно:
+  - warnings_meta:        [{"text":"string","message_id":number|null}]
+  - decisions_meta:       [{"text":"string","message_id":number|null}]
+  - open_questions_meta:  [{"text":"string","message_id":number|null}]
+  - timeline_meta:        [{"text":"string","message_id":number|null}]
+  - notable_quotes_meta:  [{"quote":"string","message_id":number|null,"from":"string|null"}]
+
+VERDICT & SCORES:
 - client_mood ∈ {"позитивный","нейтральный","негативный"}; при сомнении — "нейтральный".
 - verdict: "critical" при явных крит. фактах (breach/блокер/риск денег), "warning" при заметных рисках, иначе "ok".
-- health_score: 0–100 (выше — лучше). Если merged пустоват — 80–100; есть проблемы — 40–79; критично — 0–39.
-- char_counts/tokens_estimate — скопируй из merged при наличии; иначе оцени.
-- trimming_report/quality_flags — по merged (например, малое покрытие/пропуски/дубликаты).
+- health_score: 0–100 (выше — лучше). Если merged скудный — 80–100; есть проблемы — 40–79; критично — 0–39.
 
-OUTPUT SHAPE (ровно этот объект, без лишних ключей):
+SLA:
+- {"breaches":[], "at_risk":[]} — только если есть поводы в issues/timeline/quotes; иначе пустые массивы.
+
+QUALITY/METRICS:
+- char_counts/tokens_estimate — скопируй из merged при наличии; иначе оцени числом.
+- trimming_report/quality_flags — по merged (например, малое покрытие/пропуски/дубликаты/insufficient_evidence).
+
+OUTPUT SHAPE (строго этот объект; дополнительные *_meta разрешены):
 {
   "chat_id": 0,
   "date": "YYYY-MM-DD",
@@ -166,16 +195,35 @@ OUTPUT SHAPE (ровно этот объект, без лишних ключей
   "client_mood": "позитивный|нейтральный|негативный",
   "summary": "string",
   "incidents": [
-    {"title": "string", "impact": "string", "status": "resolved|unresolved", "severity": "low|medium|high", "evidence": ["string"]}
+    {
+      "title": "string",
+      "impact": "string",
+      "status": "resolved|unresolved",
+      "severity": "low|medium|high",
+      "message_id": null,
+      "evidence": ["string"],
+      "evidence_refs": [{"message_id": null, "quote": "string"}]
+    }
   ],
   "warnings": ["string"],
+  "warnings_meta": [{"text":"string","message_id":null}],
   "decisions": ["string"],
+  "decisions_meta": [{"text":"string","message_id":null}],
   "open_questions": ["string"],
-  "sla": {"breaches": ["string"], "at_risk": ["string"]},
+  "open_questions_meta": [{"text":"string","message_id":null}],
   "timeline": ["string"],
+  "timeline_meta": [{"text":"string","message_id":null}],
   "notable_quotes": ["string"],
+  "notable_quotes_meta": [{"quote":"string","message_id":null,"from":"string|null"}],
+  "sla": {"breaches": ["string"], "at_risk": ["string"]},
   "quality_flags": ["string"],
-  "trimming_report": {"initial_messages":0,"kept_messages":0,"kept_clusters":0,"primary_discard_rules":["string"],"potential_loss_risks":["string"]},
+  "trimming_report": {
+    "initial_messages": 0,
+    "kept_messages": 0,
+    "kept_clusters": 0,
+    "primary_discard_rules": ["string"],
+    "potential_loss_risks": ["string"]
+  },
   "char_counts": {"total": 0},
   "tokens_estimate": 0
 }
@@ -364,22 +412,34 @@ PROMPT,
             'chat_id' => $chatId,
             'date' => $date,
             'verdict' => 'ok',
-            'health_score' => 80,
+            'health_score' => 0,
             'client_mood' => 'нейтральный',
             'summary' => 'Данные недоступны.',
             'incidents' => [],
             'warnings' => [],
+            'warnings_meta' => [],
             'decisions' => [],
+            'decisions_meta' => [],
             'open_questions' => [],
-            'sla' => ['breaches' => [], 'at_risk' => []],
+            'open_questions_meta' => [],
             'timeline' => [],
+            'timeline_meta' => [],
             'notable_quotes' => [],
+            'notable_quotes_meta' => [],
+            'sla' => ['breaches' => [], 'at_risk' => []],
             'quality_flags' => ['empty'],
-            'trimming_report' => [],
+            'trimming_report' => [
+                'initial_messages' => 0,
+                'kept_messages' => 0,
+                'kept_clusters' => 0,
+                'primary_discard_rules' => [],
+                'potential_loss_risks' => [],
+            ],
             'char_counts' => ['total' => 0],
             'tokens_estimate' => 0,
         ];
     }
+
 
     /**
      * Универсальный строгий вызов LLM с повтором и «ремонтом» JSON по схеме.
