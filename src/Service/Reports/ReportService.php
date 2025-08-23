@@ -146,49 +146,73 @@ class ReportService
     {
         $this->logger->info('Running daily digest', ['day' => date('Y-m-d', $now)]);
 
-        $reportsJson = [];
-        $reportsArr = [];
-        $titlesByChat = [];
+        $reportsForLLM = [];    // сюда — JSON каждого чата для агрегатора
+        $chatSections = [];    // сюда — для финального рендера (title + массив/JSON)
 
         foreach ($this->repo->listActiveChats($now) as $chatId) {
             $data = $this->generateSummary($chatId, $now);
-            if ($data === null) continue;
+            // generateSummary НИКОГДА не возвращает null
+            $summary = $data['summary'];   // JSON string (executive_report)
+            $chatTitle = (string)($data['title'] ?? '');
 
-            $summary = $data['summary'];
-            $reportsJson[] = $summary;
+            $reportsForLLM[] = $summary;
 
-            $arr = json_decode($summary, true);
-            if (is_array($arr)) {
-                $reportsArr[] = $arr;
-                $titlesByChat[(string)($arr['chat_id'] ?? $chatId)] = (string)($data['title'] ?? '');
-            }
+            $chatSections[] = [
+                'chat_id' => $chatId,
+                'title' => $chatTitle !== '' ? $chatTitle : null,
+                'report' => $summary,        // можно оставить строкой — рендерер сам декодирует
+            ];
 
+            // Сохраним в Notion каждый репорт по чату (по желанию)
             if ($this->notion !== null) {
-                $title = 'Отчёт ' . date('Y-m-d', $now) . ' #' . $chatId;
-                $this->notion->addReport($title, $this->toPlainText($summary));
+                $titleN = 'Отчёт ' . date('Y-m-d', $now) . ' #' . $chatId;
+                $this->notion->addReport($titleN, $this->toPlainText($summary));
             }
         }
 
-        if (empty($reportsJson)) {
+        if (empty($reportsForLLM)) {
+            // Нечего отправлять
+            $this->logger->info('No active chat reports; digest skipped');
             return;
         }
 
+        // 1) Собираем агрегированный дайджест (шапка)
         try {
-            $digest = $this->deepseek->summarizeReports($reportsJson, date('Y-m-d', $now));
+            $digestJson = $this->deepseek->summarizeReports($reportsForLLM, date('Y-m-d', $now));
         } catch (Throwable $e) {
             $this->logger->error('Failed to generate digest', ['error' => $e->getMessage()]);
-            return;
+            // Фолбэк: формально отрисуем только список чатов (без шапки)
+            $digestJson = json_encode([
+                'date' => date('Y-m-d', $now),
+                'verdict' => 'ok',
+                'scoreboard' => ['ok' => 0, 'warning' => 0, 'critical' => 0],
+                'score_avg' => null,
+                'top_attention' => [],
+                'themes' => [],
+                'risks' => [],
+                'sla' => ['breaches' => [], 'at_risk' => []],
+                'quality_flags' => ['digest_generation_failed'],
+                'trimming_report' => [],
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
 
-        // Шапка дня + полноценные отчёты по всем чатам
-        $text = $this->renderer->renderDigestWithChats($digest, $reportsArr, $titlesByChat);
+        // 2) Финальный текст: шапка + разворот по чатам
+        $text = $this->renderer->renderDigestWithChats($digestJson, $chatSections);
 
+        // 3) Отправляем в Telegram (с безопасным чанкингом)
         $this->telegram->sendMessage($this->summaryChatId, $text, 'MarkdownV2');
-        if ($this->slack !== null) $this->slack->sendMessage(strip_tags($text));
-        if ($this->notion !== null) $this->notion->addReport('Digest ' . date('Y-m-d', $now), strip_tags($digest));
+
+        // 4) Дублируем (при необходимости)
+        if ($this->slack !== null) {
+            $this->slack->sendMessage($this->toPlainText($text));
+        }
+        if ($this->notion !== null) {
+            $this->notion->addReport('Digest ' . date('Y-m-d', $now), $this->toPlainText($digestJson));
+        }
 
         $this->logger->info('Daily digest sent');
     }
+
 
     // --- helpers ---
 

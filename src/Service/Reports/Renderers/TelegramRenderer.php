@@ -9,6 +9,163 @@ final class TelegramRenderer
 {
     private const VERDICT_EMOJI = ['ok' => '🟢', 'warning' => '🟠', 'critical' => '🔴'];
 
+    /** Шапка + список «проблемных» чатов (если есть), + агрегированные темы/риски/SLA */
+    public function renderExecutiveDigest(string $json): string
+    {
+        $data = json_decode($json, true);
+
+        if (is_array($data) && (isset($data['verdict']) || isset($data['scoreboard']))) {
+            $lines = [];
+            $emoji = self::VERDICT_EMOJI[strtolower((string)($data['verdict'] ?? 'ok'))] ?? '⚪️';
+            $date = (string)($data['date'] ?? '');
+
+            $hdr = "*Ежедневный дайджест*";
+            if ($date !== '') $hdr .= "\n_" . TextUtils::escapeMarkdown($date) . "_";
+            $lines[] = $hdr;
+
+            $sb = (array)($data['scoreboard'] ?? []);
+            $ok = (int)($sb['ok'] ?? 0);
+            $wr = (int)($sb['warning'] ?? 0);
+            $cr = (int)($sb['critical'] ?? 0);
+            $avg = isset($data['score_avg']) ? (int)$data['score_avg'] : null;
+
+            $meta = "{$emoji} `Вердикт`: " . strtoupper((string)($data['verdict'] ?? 'ok'))
+                . " \\| `OK`: {$ok} \\| `WARN`: {$wr} \\| `CRIT`: {$cr}";
+            if ($avg !== null) $meta .= " \\| `Средняя оценка`: {$avg}";
+            $lines[] = $meta;
+
+            // Топ внимания
+            if (!empty($data['top_attention']) && is_array($data['top_attention'])) {
+                $lines[] = '';
+                $lines[] = '*Топ внимания*';
+                foreach (array_slice($data['top_attention'], 0, 7) as $row) {
+                    if (!is_array($row)) continue;
+                    $cid = $row['chat_id'] ?? '';
+                    $ver = strtolower((string)($row['verdict'] ?? 'warning'));
+                    $sc = $row['health_score'] ?? null;
+                    $sum = (string)($row['summary'] ?? '');
+                    $kps = array_slice(array_values(array_filter((array)($row['key_points'] ?? []), 'is_string')), 0, 3);
+
+                    $badge = self::VERDICT_EMOJI[$ver] ?? '🟠';
+                    $line = "{$badge} `#" . TextUtils::escapeMarkdown((string)$cid) . "` — `" . strtoupper($ver) . "`";
+                    if (is_numeric($sc)) $line .= " \\| `Оценка`: " . (int)$sc;
+                    $lines[] = $line;
+
+                    if ($sum !== '') $lines[] = '• ' . TextUtils::escapeMarkdown($sum);
+                    foreach ($kps as $pt) $lines[] = '• ' . TextUtils::escapeMarkdown($pt);
+                    $lines[] = '';
+                }
+                while (!empty($lines) && trim(end($lines)) === '') array_pop($lines);
+            }
+
+            // Темы/риски
+            foreach (['themes' => 'Темы дня', 'risks' => 'Общие риски'] as $k => $ttl) {
+                $vals = array_slice(array_values(array_filter((array)($data[$k] ?? []), 'is_string')), 0, 7);
+                if (!$vals) continue;
+                $lines[] = '';
+                $lines[] = '*' . TextUtils::escapeMarkdown($ttl) . '*';
+                foreach ($vals as $v) $lines[] = '• ' . TextUtils::escapeMarkdown($v);
+            }
+
+            // SLA
+            if (!empty($data['sla']) && is_array($data['sla'])) {
+                $breaches = array_slice(array_values(array_filter((array)($data['sla']['breaches'] ?? []), 'is_string')), 0, 7);
+                $atRisk = array_slice(array_values(array_filter((array)($data['sla']['at_risk'] ?? []), 'is_string')), 0, 7);
+                if ($breaches || $atRisk) {
+                    $lines[] = '';
+                    $lines[] = '*SLA*';
+                    if ($breaches) {
+                        $lines[] = '• ' . TextUtils::escapeMarkdown('Нарушения:');
+                        foreach ($breaches as $b) $lines[] = '  • ' . TextUtils::escapeMarkdown($b);
+                    }
+                    if ($atRisk) {
+                        $lines[] = '• ' . TextUtils::escapeMarkdown('Зона риска:');
+                        foreach ($atRisk as $a) $lines[] = '  • ' . TextUtils::escapeMarkdown($a);
+                    }
+                }
+            }
+
+            // Футер качества
+            $footer = $this->renderDigestQualityFooter($data);
+            if ($footer !== '') {
+                $lines[] = '';
+                $lines[] = $footer;
+            }
+
+            return implode("\n", $lines);
+        }
+
+        // Легаси-ветка
+        if (is_array($data) && isset($data['chat_summaries']) && is_array($data['chat_summaries'])) {
+            $out = [];
+            $date = (string)($data['date'] ?? '');
+            $hdr = "*Ежедневный дайджест*";
+            if ($date !== '') $hdr .= "\n_" . TextUtils::escapeMarkdown($date) . "_";
+            $out[] = $hdr;
+
+            foreach ($data['chat_summaries'] as $item) {
+                if (is_string($item)) {
+                    $decoded = json_decode($item, true);
+                    if (is_array($decoded)) $item = $decoded;
+                }
+                if (is_array($item)) {
+                    $out[] = '';
+                    $out[] = $this->renderExecutiveChat($item);
+                } elseif ($item !== null) {
+                    $out[] = '• ' . TextUtils::escapeMarkdown((string)$item);
+                }
+            }
+            return implode("\n", $out);
+        }
+
+        return TextUtils::escapeMarkdown(is_string($json) ? $json : json_encode($json, JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * НОВОЕ: финальный рендер для ежедневного дайджеста + «раскрытие» всех чатов.
+     *
+     * @param string $digestJson JSON дайджеста (из DeepseekService::summarizeReports)
+     * @param array<array{chat_id:int|string, title?:string|null, report:array|string}> $chatSections
+     */
+    public function renderDigestWithChats(string $digestJson, array $chatSections): string
+    {
+        $parts = [];
+
+        // 1) Шапка дайджеста
+        $parts[] = $this->renderExecutiveDigest($digestJson);
+
+        // 2) Разделитель
+        $parts[] = "\n────────────\n";
+
+        // 3) По каждому чату — развернутый executive-репорт
+        foreach ($chatSections as $idx => $row) {
+            if (!is_array($row)) continue;
+
+            $title = isset($row['title']) ? (string)$row['title'] : null;
+            $rep = $row['report'] ?? null;
+
+            // Разделитель между чатами
+            if ($idx > 0) {
+                $parts[] = "\n────────────\n";
+            }
+
+            if (is_string($rep)) {
+                $arr = json_decode($rep, true);
+                if (is_array($arr)) {
+                    $parts[] = $this->renderExecutiveChat($arr, $title);
+                } else {
+                    // Фолбэк — покажем «как есть»
+                    $parts[] = TextUtils::escapeMarkdown($rep);
+                }
+            } elseif (is_array($rep)) {
+                $parts[] = $this->renderExecutiveChat($rep, $title);
+            }
+        }
+
+        return implode("\n", array_filter($parts, static fn($p) => $p !== null && $p !== ''));
+    }
+
+    /** Один чат — детальный executive-репорт c кликабельными ссылками */
     public function renderExecutiveChat(array $r, ?string $chatTitle = null): string
     {
         $r = $this->normalizeExecutiveChat($r);
@@ -18,6 +175,7 @@ final class TelegramRenderer
         $chatId = $r['chat_id'] ?? null;
         $date = (string)($r['date'] ?? '');
 
+        // Заголовок
         $hdr = "{$emoji} *Чат*";
         if ($chatTitle && trim($chatTitle) !== '') {
             $hdr .= ' ' . TextUtils::escapeMarkdown('«' . $chatTitle . '»');
@@ -42,12 +200,13 @@ final class TelegramRenderer
         }
         $lines[] = $hdr;
 
+        // Summary
         if (!empty($r['summary'])) {
             $lines[] = '';
             $lines[] = '*Кратко*: ' . TextUtils::escapeMarkdown((string)$r['summary']);
         }
 
-        // Инциденты (с ссылками на message_id)
+        // Инциденты (с ссылками)
         if (!empty($r['incidents']) && is_array($r['incidents'])) {
             $lines[] = '';
             $lines[] = '*Инциденты*';
@@ -73,6 +232,7 @@ final class TelegramRenderer
 
                 if ($impact !== '') $row .= "\n  " . TextUtils::escapeMarkdown($impact);
 
+                // Evidence (до 2)
                 $refs = [];
                 if (!empty($inc['evidence_refs']) && is_array($inc['evidence_refs'])) {
                     foreach (array_slice($inc['evidence_refs'], 0, 2) as $ref) {
@@ -99,13 +259,13 @@ final class TelegramRenderer
             }
         }
 
-        // Предупреждения / Решения / Открытые вопросы / Важные события / Цитаты — через *_meta
+        // Универсальные секции с *_meta и ссылками
         $this->renderListWithLinks($lines, $r, $chatId, 'warnings', 'Предупреждения', 3);
         $this->renderListWithLinks($lines, $r, $chatId, 'decisions', 'Решения', 3);
         $this->renderListWithLinks($lines, $r, $chatId, 'open_questions', 'Открытые вопросы', 3);
         $this->renderListWithLinks($lines, $r, $chatId, 'timeline', 'Важные события', 5);
 
-        // Цитаты отдельно — поддерживаем notable_quotes_meta
+        // Цитаты
         if (!empty($r['notable_quotes_meta']) && is_array($r['notable_quotes_meta'])) {
             $vals = array_slice($r['notable_quotes_meta'], 0, 3);
             if ($vals) {
@@ -148,6 +308,7 @@ final class TelegramRenderer
             }
         }
 
+        // Футер
         $footer = $this->renderQualityFooter($r);
         if ($footer !== '') {
             $lines[] = '';
@@ -157,112 +318,7 @@ final class TelegramRenderer
         return implode("\n", $lines);
     }
 
-    public function renderExecutiveDigest(string $json): string
-    {
-        $data = json_decode($json, true);
-
-        if (is_array($data) && (isset($data['verdict']) || isset($data['scoreboard']))) {
-            $lines = [];
-            $emoji = self::VERDICT_EMOJI[strtolower((string)($data['verdict'] ?? 'ok'))] ?? '⚪️';
-            $date = (string)($data['date'] ?? '');
-
-            $hdr = "*Ежедневный дайджест*";
-            if ($date !== '') $hdr .= "\n_" . TextUtils::escapeMarkdown($date) . "_";
-            $lines[] = $hdr;
-
-            $sb = (array)($data['scoreboard'] ?? []);
-            $ok = (int)($sb['ok'] ?? 0);
-            $wr = (int)($sb['warning'] ?? 0);
-            $cr = (int)($sb['critical'] ?? 0);
-            $avg = isset($data['score_avg']) ? (int)$data['score_avg'] : null;
-
-            $meta = "{$emoji} `Вердикт`: " . strtoupper((string)($data['verdict'] ?? 'ok'))
-                . " \\| `OK`: {$ok} \\| `WARN`: {$wr} \\| `CRIT`: {$cr}";
-            if ($avg !== null) $meta .= " \\| `Средняя оценка`: {$avg}";
-            $lines[] = $meta;
-
-            if (!empty($data['top_attention']) && is_array($data['top_attention'])) {
-                $lines[] = '';
-                $lines[] = '*Топ внимания*';
-                foreach (array_slice($data['top_attention'], 0, 7) as $row) {
-                    if (!is_array($row)) continue;
-                    $cid = $row['chat_id'] ?? '';
-                    $ver = strtolower((string)($row['verdict'] ?? 'warning'));
-                    $sc = $row['health_score'] ?? null;
-                    $sum = (string)($row['summary'] ?? '');
-                    $kps = array_slice(array_values(array_filter((array)($row['key_points'] ?? []), 'is_string')), 0, 3);
-
-                    $badge = self::VERDICT_EMOJI[$ver] ?? '🟠';
-                    $line = "{$badge} `#" . TextUtils::escapeMarkdown((string)$cid) . "` — `" . strtoupper($ver) . "`";
-                    if (is_numeric($sc)) $line .= " \\| `Оценка`: " . (int)$sc;
-                    $lines[] = $line;
-
-                    if ($sum !== '') $lines[] = '• ' . TextUtils::escapeMarkdown($sum);
-                    foreach ($kps as $pt) $lines[] = '• ' . TextUtils::escapeMarkdown($pt);
-                    $lines[] = '';
-                }
-                while (!empty($lines) && trim(end($lines)) === '') array_pop($lines);
-            }
-
-            foreach (['themes' => 'Темы дня', 'risks' => 'Общие риски'] as $k => $ttl) {
-                $vals = array_slice(array_values(array_filter((array)($data[$k] ?? []), 'is_string')), 0, 7);
-                if (!$vals) continue;
-                $lines[] = '';
-                $lines[] = '*' . TextUtils::escapeMarkdown($ttl) . '*';
-                foreach ($vals as $v) $lines[] = '• ' . TextUtils::escapeMarkdown($v);
-            }
-
-            if (!empty($data['sla']) && is_array($data['sla'])) {
-                $breaches = array_slice(array_values(array_filter((array)($data['sla']['breaches'] ?? []), 'is_string')), 0, 7);
-                $atRisk = array_slice(array_values(array_filter((array)($data['sla']['at_risk'] ?? []), 'is_string')), 0, 7);
-                if ($breaches || $atRisk) {
-                    $lines[] = '';
-                    $lines[] = '*SLA*';
-                    if ($breaches) {
-                        $lines[] = '• ' . TextUtils::escapeMarkdown('Нарушения:');
-                        foreach ($breaches as $b) $lines[] = '  • ' . TextUtils::escapeMarkdown($b);
-                    }
-                    if ($atRisk) {
-                        $lines[] = '• ' . TextUtils::escapeMarkdown('Зона риска:');
-                        foreach ($atRisk as $a) $lines[] = '  • ' . TextUtils::escapeMarkdown($a);
-                    }
-                }
-            }
-
-            $footer = $this->renderDigestQualityFooter($data);
-            if ($footer !== '') {
-                $lines[] = '';
-                $lines[] = $footer;
-            }
-
-            return implode("\n", $lines);
-        }
-
-        if (is_array($data) && isset($data['chat_summaries']) && is_array($data['chat_summaries'])) {
-            $out = [];
-            $date = (string)($data['date'] ?? '');
-            $hdr = "*Ежедневный дайджест*";
-            if ($date !== '') $hdr .= "\n_" . TextUtils::escapeMarkdown($date) . "_";
-            $out[] = $hdr;
-
-            foreach ($data['chat_summaries'] as $item) {
-                if (is_string($item)) {
-                    $decoded = json_decode($item, true);
-                    if (is_array($decoded)) $item = $decoded;
-                }
-                if (is_array($item)) {
-                    $out[] = '';
-                    $out[] = $this->renderExecutiveChat($item);
-                } elseif ($item !== null) {
-                    $out[] = '• ' . TextUtils::escapeMarkdown((string)$item);
-                }
-            }
-            return implode("\n", $out);
-        }
-
-        return TextUtils::escapeMarkdown(is_string($json) ? $json : json_encode($json, JSON_UNESCAPED_UNICODE));
-    }
-
+    /** Вспомогательный рендер секции с *_meta и ссылками */
     private function renderListWithLinks(array &$lines, array $r, $chatId, string $baseKey, string $title, int $limit): void
     {
         $metaKey = $baseKey . '_meta';
@@ -303,17 +359,18 @@ final class TelegramRenderer
         return $r;
     }
 
+    /** Строим публичную ссылку на сообщение в супергруппе */
     private function tgLink($chatId, $messageId): ?string
     {
         if (!$chatId || !$messageId) return null;
         $cid = (int)$chatId;
-        // private/supergroup: -100xxxxxxxxxx → t.me/c/<abs(id)-1000000000000>/<msg_id>
         if ($cid < 0) {
+            // -100xxxxxxxxxxxx → /c/<abs(id)-1000000000000>/<message_id>
             $internal = abs($cid) - 1000000000000;
             if ($internal <= 0) return null;
             return "https://t.me/c/{$internal}/{$messageId}";
         }
-        // публичный чат по username тут не известен — пропускаем
+        // Для публичных каналов по username можно расширить здесь позже.
         return null;
     }
 
