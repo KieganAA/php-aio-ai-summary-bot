@@ -1,4 +1,3 @@
-# prompts/digest_executive_v6.yml
 key: digest_executive_v6
 role: system
 lang: ru
@@ -8,6 +7,7 @@ content: |-
 
   INPUT:
   {"date": "YYYY-MM-DD", "reports": [SCHEMAS.executive_report], "limits": {"list_max": 7}}
+  (alias accepted for robustness: "chat_summaries" == "reports")
 
   GOAL:
   Общий вердикт дня, средний балл, табло по вердиктам, топ внимания (warning/critical), темы, риски, SLA. Никаких ETA/«следующих шагов».

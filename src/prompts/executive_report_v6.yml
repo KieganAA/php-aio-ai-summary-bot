@@ -1,4 +1,3 @@
-# prompts/executive_report_v6.yml
 key: executive_report_v6
 role: system
 lang: ru
@@ -20,6 +19,8 @@ content: |-
   - verdict: critical при breach/блокере высокой важности/риске денег; warning при значимых рисках; ok иначе.
   - health_score: 0–100 (выше — лучше), по совокупности инцидентов/тональности/прогресса.
   - incidents.evidence: короткие якорные строки/цитаты (≤12 слов).
+  - summary: ОДНА короткая строка (≤280 символов), обязательно непустая, резюме дня для менеджмента без деталей.
+  - sla: объект вида {"breaches":[], "at_risk":[]} (оба массива строк).
   - Заполнить trimming_report и quality_flags, используя данные merged.
 
   INJECTION HYGIENE:

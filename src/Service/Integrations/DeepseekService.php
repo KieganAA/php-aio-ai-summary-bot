@@ -14,26 +14,23 @@ use Src\Util\TextUtils;
 use Src\Util\TokenCounter;
 use Throwable;
 
-// NEW
-
-// NEW
-
 /**
- * DeepseekService (structure-aware)
+ * DeepseekService (structure-aware, strict JSON)
  * - RU-first prompts and outputs.
  * - Structure-aware chunking (threads/time gaps/actors).
- * - Strict JSON for executive flows (response_format=json_object + shape checks up the stack).
+ * - STRICT JSON for executive flows (response_format=json_object + schema checks).
+ * - No fallbacks: invalid schema -> exception.
  */
 class DeepseekService
 {
     private string $apiKey;
 
     // Tuning knobs
-    private int $chunkTokenLimit = 3000;   // per-chunk transcript tokens (budget)
+    private int $chunkTokenLimit = 3000;  // per-chunk transcript tokens (budget)
     private int $reduceTokenLimit = 3000;  // threshold to trigger chunking in executive
     private string $timezone = 'Europe/Berlin';
-    private int $gapMinutes = 45;          // structure segmentation
-    private bool $useStructChunking = true; // feature flag
+    private int $gapMinutes = 45;    // structure segmentation
+    private bool $useStructChunking = true; // DEFAULT: structure-aware on
 
     public function __construct(string $apiKey)
     {
@@ -116,33 +113,7 @@ class DeepseekService
         return trim($content) !== '' ? trim($content) : $raw;
     }
 
-    /**
-     * @return array{0: string[], 1: string[]} [our employees, client employees]
-     */
-
-    // -------------------- legacy token-only chunking --------------------
-    private function chunkTranscript(string $transcript, int $maxTokens): array
-    {
-        $messages = explode("\n", trim($transcript));
-        $chunks = [];
-        $current = '';
-        foreach ($messages as $msg) {
-            $t = TokenCounter::count($msg);
-            if (TokenCounter::count($current) + $t > $maxTokens) {
-                if (trim($current) !== '') {
-                    $chunks[] = trim($current);
-                }
-                $current = '';
-            }
-            $current .= $msg . "\n";
-        }
-        if (trim($current) !== '') {
-            $chunks[] = trim($current);
-        }
-        return $chunks;
-    }
-
-    // -------------------- structure-aware path --------------------
+    // -------- structure-aware chunking --------
     private function chunkMessages(array $messages, int $gapMinutes): array
     {
         return StructChunker::chunkByStructure($messages, $gapMinutes, $this->timezone);
@@ -152,6 +123,7 @@ class DeepseekService
     {
         $client = $this->client();
         $system = PromptLoader::system('chunk_summary_v5');
+
         $payload = [
             'chat_id' => $chatId,
             'date' => $date,
@@ -183,39 +155,12 @@ class DeepseekService
         return $json;
     }
 
-    private function summarizeChunk(
-        string $chunk,
-        string $chatTitle,
-        int $chatId,
-        string $date,
-        int $chunkIndex
-    ): string {
-        $client  = $this->client();
-        $system = PromptLoader::system('chunk_summary_v5');
-        $payload = [
-            'chat_title' => $chatTitle,
-            'chat_id' => (string)$chatId,
-            'date'       => $date,
-            'timezone' => $this->timezone,
-            'chunk_id'   => 'chunk-' . $chunkIndex,
-            'transcript' => $chunk,
-        ];
+    // -------- PUBLIC: EXECUTIVE JSON (strict one schema) --------
 
-        $client
-            ->setTemperature(0.15)
-            ->setResponseFormat('json_object')
-            ->query($system, 'system')
-            ->query($this->jsonGuardInstruction('ru'), 'user')
-            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-        $raw = $this->runWithRetries($client);
-        $content = $this->ensureJsonOrThrow($this->extractContent($raw));
-        return trim($content);
-    }
-
-    // -------------------- PUBLIC: EXECUTIVE JSON --------------------
     /**
      * Executive report: returns STRICT JSON (EN keys, RU values).
      * $meta = ['chat_title','chat_id','date','lang' => 'ru','audience' => 'executive']
+     * No fallbacks. Invalid schema -> exception.
      */
     public function executiveReport(string $transcript, array $meta): string
     {
@@ -223,19 +168,19 @@ class DeepseekService
         $chatId = (int)($meta['chat_id'] ?? 0);
         $date = (string)($meta['date'] ?? date('Y-m-d'));
 
-        // For very long transcripts, compress first via chunk summaries
+        // Optional token-based pre-reduce (legacy path if REALLY huge transcripts)
         $useChunks = TokenCounter::count($transcript) > $this->reduceTokenLimit;
         $chunkSummaries = null;
 
         if ($useChunks) {
-            $chunks = $this->chunkTranscript($transcript, $this->chunkTokenLimit);
+            // оставляем как precompress, но финальная схема всё равно STRICT executive
+            $messages = array_map(static function ($line) {
+                return ['text' => $line];
+            }, explode("\n", $transcript));
+            $chunks = $this->chunkMessages($messages, $this->gapMinutes);
             $mini = [];
             foreach ($chunks as $i => $chunk) {
-                $raw = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
-                $decoded = json_decode($raw, true);
-                if (is_array($decoded)) {
-                    $mini[] = $decoded;
-                }
+                $mini[] = $this->summarizeChunkMessages($chunk, $date, $chatId, $i + 1);
             }
             $chunkSummaries = $mini;
         }
@@ -243,13 +188,11 @@ class DeepseekService
         $client = $this->client();
         $system = PromptLoader::system('executive_report_v6');
         $payload = [
-            'chat_title' => $chatTitle,
-            'chat_id' => (string)$chatId,
+            'chat_id' => (int)$chatId,
             'date' => $date,
             'timezone' => $this->timezone,
-            'transcript' => $useChunks ? null : $transcript,
-            'chunk_summaries' => $useChunks ? $chunkSummaries : null,
-            'hints' => $meta['signals'] ?? null,
+            'merged' => $useChunks ? ($chunkSummaries[0] ?? null) : null,
+            'limits' => ['list_max' => 7, 'quote_max_words' => 12],
         ];
 
         $client
@@ -260,11 +203,16 @@ class DeepseekService
             ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
 
         $raw = $this->runWithRetries($client);
-        $out = trim($this->ensureJsonOrThrow($this->extractContent($raw)));
-        return $out;
+        $content = trim($this->ensureJsonOrThrow($this->extractContent($raw)));
+        $data = json_decode($content, true);
+        if (!is_array($data)) {
+            throw new RuntimeException('DeepSeek executiveReport: non-JSON response');
+        }
+        JsonShape::assertExecutive($data);
+        return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     }
 
-    /** NEW: full structure-aware flow (messages → chunks → reducer → executive) */
+    /** Preferred: full structure-aware flow (messages → chunks → reducer → executive). No fallbacks. */
     public function executiveFromMessages(array $messages, array $meta): string
     {
         $chatId = (int)($meta['chat_id'] ?? 0);
@@ -276,7 +224,7 @@ class DeepseekService
             $summaries[] = $this->summarizeChunkMessages($chunk, $date, $chatId, $i + 1);
         }
 
-        // Reduce
+        // Reduce to merged chunk-summary
         $client = $this->client();
         $system = PromptLoader::system('final_reducer_v5');
         $payload = [
@@ -295,7 +243,7 @@ class DeepseekService
         $merged = json_decode($this->ensureJsonOrThrow($this->extractContent($raw)), true) ?: [];
         JsonShape::assertChunkSummary($merged);
 
-        // Executive
+        // Executive from merged
         $system2 = PromptLoader::system('executive_report_v6');
         $payload2 = [
             'chat_id' => $chatId,
@@ -312,10 +260,16 @@ class DeepseekService
             ->query(json_encode($payload2, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
         $raw2 = $this->runWithRetries($client2);
         $content2 = $this->ensureJsonOrThrow($this->extractContent($raw2));
-        return trim($content2);
+        $data2 = json_decode($content2, true);
+        if (!is_array($data2)) {
+            throw new RuntimeException('DeepSeek executiveFromMessages: non-JSON response');
+        }
+        JsonShape::assertExecutive($data2);
+        return json_encode($data2, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     }
 
-    // -------------------- PUBLIC: TOPIC (RU, short) --------------------
+    // -------- PUBLIC: Topic + mood (оставил как было) --------
+
     public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
     {
         $client = $this->client();
@@ -338,30 +292,6 @@ class DeepseekService
         return TextUtils::escapeMarkdown($out);
     }
 
-    // -------------------- PUBLIC: DIGEST (executive JSON) --------------------
-    public function summarizeReports(array $reports, string $date): string
-    {
-        $client = $this->client();
-        $system = PromptLoader::system('digest_executive_v6');
-        $payload = [
-            'date' => $date,
-            'chat_summaries' => $reports,
-        ];
-
-        $client
-            ->setTemperature(0.15)
-            ->setResponseFormat('json_object')
-            ->query($system, 'system')
-            ->query($this->jsonGuardInstruction('ru'), 'user')
-            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
-
-        $raw = $this->runWithRetries($client);
-        $out = trim($this->ensureJsonOrThrow($this->extractContent($raw)));
-        return $out;
-    }
-
-    // -------------------- PUBLIC: MOOD (RU) --------------------
-
     /** Returns one of: "позитивный" | "нейтральный" | "негативный". */
     public function inferMood(string $transcript): string
     {
@@ -383,7 +313,6 @@ class DeepseekService
 
             $mood = mb_strtolower((string)($data['mood'] ?? $data['client_mood'] ?? ''));
 
-            // Accept EN fallbacks too
             return match (true) {
                 str_starts_with($mood, 'поз') || $mood === 'positive' => 'позитивный',
                 str_starts_with($mood, 'нег') || $mood === 'negative' => 'негативный',
@@ -394,8 +323,8 @@ class DeepseekService
         }
     }
 
-    // -------------------- JSON helpers --------------------
-    /** Короткая гарда для json_object: должна содержать слово 'json' в user-промпте */
+    // -------- JSON helpers --------
+
     private function jsonGuardInstruction(string $locale = 'ru'): string
     {
         return $locale === 'ru'
@@ -403,7 +332,6 @@ class DeepseekService
             : 'Reply with valid json object only. No extra text, no Markdown, no ```.';
     }
 
-    /** Если DeepSeek вернул служебную ошибку — бросаем исключение */
     private function ensureJsonOrThrow(string $content): string
     {
         $hay = mb_strtolower($content);
@@ -412,20 +340,5 @@ class DeepseekService
             throw new RuntimeException('DeepSeek rejected json_object request: ' . $content);
         }
         return $content;
-    }
-
-    private function decodeJson(string $content): ?array
-    {
-        $json = json_decode($content, true);
-        if (is_array($json)) {
-            return $json;
-        }
-        if (preg_match('/\{.*\}/s', $content, $m)) {
-            $json = json_decode($m[0], true);
-            if (is_array($json)) {
-                return $json;
-            }
-        }
-        return null;
     }
 }
