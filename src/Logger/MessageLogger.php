@@ -1,4 +1,5 @@
 <?php
+// src/Logger/MessageLogger.php
 declare(strict_types=1);
 
 namespace Src\Logger;
@@ -10,6 +11,9 @@ use Src\Repository\MessageRepositoryInterface;
 
 /**
  * Handles incoming Telegram updates and persists relevant messages.
+ * - Поддержка reply_to
+ * - Корректный сбор текста (text | caption)
+ * - Лёгкая маркировка вложений (photo/document/sticker/voice/video/audio)
  */
 class MessageLogger
 {
@@ -30,7 +34,8 @@ class MessageLogger
     {
         $message = $update->getMessage();
         if ($message === null) {
-            return; // ignore non-message updates
+            // Дополнительно можно обрабатывать editedMessage/channelPost при необходимости
+            return;
         }
 
         $chat  = $message->getChat();
@@ -40,6 +45,13 @@ class MessageLogger
             return;
         }
 
+        // Основной текст: text -> caption -> пусто
+        $text = $message->getText();
+        if ($text === null || $text === '') {
+            $text = $message->getCaption() ?? '';
+        }
+
+        // Сбор вложений (минимальный дескриптор)
         $attachments = [];
         if ($message->getPhoto()) {
             $attachments['photo'] = true;
@@ -47,18 +59,38 @@ class MessageLogger
         if ($message->getDocument()) {
             $attachments['document'] = $message->getDocument()->getFileName();
         }
-        $attachmentsJson = !empty($attachments) ? json_encode($attachments) : null;
+        if ($message->getSticker()) {
+            $attachments['sticker'] = $message->getSticker()->getSetName() ?: true;
+        }
+        if ($message->getVoice()) {
+            $attachments['voice'] = true;
+        }
+        if ($message->getVideo()) {
+            $attachments['video'] = true;
+        }
+        if ($message->getAudio()) {
+            $attachments['audio'] = true;
+        }
+        if ($message->getVideoNote()) {
+            $attachments['video_note'] = true;
+        }
+        $attachmentsJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_UNICODE) : null;
+
+        // reply_to message id (если есть)
+        $replyToId = $message->getReplyToMessage()?->getMessageId();
 
         $msg = new Message(
             $chat->getId(),
             $title,
             $message->getMessageId(),
-            $message->getFrom()?->getUsername() ?? '' ,
+            $message->getFrom()?->getUsername() ?? '',
             $message->getDate(),
-            $message->getText() ?? '',
-            $attachmentsJson
+            $text ?? '',
+            $attachmentsJson,
+            $replyToId
         );
 
+        // Persist
         $this->repository->add($msg->chatId, [
             'message_id'  => $msg->messageId,
             'chat_title'  => $msg->chatTitle,
@@ -66,8 +98,13 @@ class MessageLogger
             'date'        => $msg->messageDate,
             'text'        => $msg->text,
             'attachments' => $msg->attachments,
+            'reply_to' => $msg->replyTo,
         ]);
 
-        $this->logger->info('Message logged', ['chat' => $title, 'id' => $msg->messageId]);
+        $this->logger->info('Message logged', [
+            'chat' => $title,
+            'id' => $msg->messageId,
+            'rt' => $replyToId,
+        ]);
     }
 }

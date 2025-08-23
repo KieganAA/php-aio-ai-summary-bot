@@ -7,28 +7,33 @@ use DeepSeek\DeepSeekClient;
 use GuzzleHttp\Client as HttpClient;
 use InvalidArgumentException;
 use RuntimeException;
-use Src\Service\EmployeeService;
+use Src\Util\JsonShape;
 use Src\Util\PromptLoader;
+use Src\Util\StructChunker;
 use Src\Util\TextUtils;
 use Src\Util\TokenCounter;
 use Throwable;
-use const CURLE_OPERATION_TIMEDOUT;
+
+// NEW
+
+// NEW
 
 /**
- * DeepseekService
- *
+ * DeepseekService (structure-aware)
  * - RU-first prompts and outputs.
- * - Robust to long transcripts via chunking (map-reduce).
- * - Strict JSON for executive flows (enforced via response_format=json_object + PHP shape checks upstream).
+ * - Structure-aware chunking (threads/time gaps/actors).
+ * - Strict JSON for executive flows (response_format=json_object + shape checks up the stack).
  */
 class DeepseekService
 {
     private string $apiKey;
 
     // Tuning knobs
-    private int $chunkTokenLimit = 3000;   // per-chunk transcript tokens
+    private int $chunkTokenLimit = 3000;   // per-chunk transcript tokens (budget)
     private int $reduceTokenLimit = 3000;  // threshold to trigger chunking in executive
     private string $timezone = 'Europe/Berlin';
+    private int $gapMinutes = 45;          // structure segmentation
+    private bool $useStructChunking = true; // feature flag
 
     public function __construct(string $apiKey)
     {
@@ -114,27 +119,8 @@ class DeepseekService
     /**
      * @return array{0: string[], 1: string[]} [our employees, client employees]
      */
-    private function extractEmployeeContext(string $transcript): array
-    {
-        $participants = [];
-        foreach (preg_split("/\r\n|\n|\r/", trim($transcript)) as $line) {
-            if (preg_match('/^\[([^\s]+)\s*@/u', $line, $m)) {
-                $participants[] = $m[1];
-            }
-        }
-        $participants = array_values(array_unique($participants));
 
-        $employees = array_map(
-            static fn(string $u) => ['username' => $u, 'nickname' => $u],
-            $participants
-        );
-        $our = EmployeeService::deriveOurEmployees($employees);
-        $ourNames = array_map(static fn(array $e) => $e['username'], $our);
-        $clientNames = array_values(array_diff($participants, $ourNames));
-
-        return [$ourNames, $clientNames];
-    }
-
+    // -------------------- legacy token-only chunking --------------------
     private function chunkTranscript(string $transcript, int $maxTokens): array
     {
         $messages = explode("\n", trim($transcript));
@@ -156,7 +142,46 @@ class DeepseekService
         return $chunks;
     }
 
-    // -------------------- MAP (chunk) --------------------
+    // -------------------- structure-aware path --------------------
+    private function chunkMessages(array $messages, int $gapMinutes): array
+    {
+        return StructChunker::chunkByStructure($messages, $gapMinutes, $this->timezone);
+    }
+
+    private function summarizeChunkMessages(array $chunk, string $date, int $chatId, int $chunkIndex): array
+    {
+        $client = $this->client();
+        $system = PromptLoader::system('chunk_summary_v5');
+        $payload = [
+            'chat_id' => $chatId,
+            'date' => $date,
+            'timezone' => $this->timezone,
+            'chunk_id' => 'chunk-' . $chunkIndex,
+            'messages' => array_values(array_map(static function ($m) {
+                return [
+                    'id' => $m['message_id'] ?? ($m['id'] ?? null),
+                    'ts' => isset($m['message_date']) ? date('c', (int)$m['message_date']) : ($m['ts'] ?? null),
+                    'from' => $m['from_user'] ?? ($m['from'] ?? null),
+                    'reply_to' => $m['reply_to'] ?? null,
+                    'text' => (string)($m['text'] ?? ''),
+                ];
+            }, $chunk)),
+            'limits' => ['list_max' => 7, 'quote_max_words' => 12],
+        ];
+
+        $client
+            ->setTemperature(0.15)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+
+        $raw = $this->runWithRetries($client);
+        $content = $this->ensureJsonOrThrow($this->extractContent($raw));
+        $json = json_decode($content, true) ?: [];
+        JsonShape::assertChunkSummary($json);
+        return $json;
+    }
 
     private function summarizeChunk(
         string $chunk,
@@ -166,7 +191,7 @@ class DeepseekService
         int $chunkIndex
     ): string {
         $client  = $this->client();
-        $system = PromptLoader::system('chunk_summary_v4');
+        $system = PromptLoader::system('chunk_summary_v5');
         $payload = [
             'chat_title' => $chatTitle,
             'chat_id' => (string)$chatId,
@@ -188,7 +213,6 @@ class DeepseekService
     }
 
     // -------------------- PUBLIC: EXECUTIVE JSON --------------------
-
     /**
      * Executive report: returns STRICT JSON (EN keys, RU values).
      * $meta = ['chat_title','chat_id','date','lang' => 'ru','audience' => 'executive']
@@ -201,26 +225,30 @@ class DeepseekService
 
         // For very long transcripts, compress first via chunk summaries
         $useChunks = TokenCounter::count($transcript) > $this->reduceTokenLimit;
-        $evidence = null;
+        $chunkSummaries = null;
 
         if ($useChunks) {
             $chunks = $this->chunkTranscript($transcript, $this->chunkTokenLimit);
             $mini = [];
             foreach ($chunks as $i => $chunk) {
-                $mini[] = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
+                $raw = $this->summarizeChunk($chunk, $chatTitle, $chatId, $date, $i + 1);
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    $mini[] = $decoded;
+                }
             }
-            $evidence = implode("\n", $mini); // concatenated JSONs
+            $chunkSummaries = $mini;
         }
 
         $client = $this->client();
-        $system = PromptLoader::system('executive_report_v4');
+        $system = PromptLoader::system('executive_report_v6');
         $payload = [
             'chat_title' => $chatTitle,
             'chat_id' => (string)$chatId,
             'date' => $date,
             'timezone' => $this->timezone,
             'transcript' => $useChunks ? null : $transcript,
-            'chunk_summaries' => $useChunks ? $evidence : null,
+            'chunk_summaries' => $useChunks ? $chunkSummaries : null,
             'hints' => $meta['signals'] ?? null,
         ];
 
@@ -236,12 +264,62 @@ class DeepseekService
         return $out;
     }
 
-    // -------------------- PUBLIC: TOPIC (RU, short) --------------------
+    /** NEW: full structure-aware flow (messages → chunks → reducer → executive) */
+    public function executiveFromMessages(array $messages, array $meta): string
+    {
+        $chatId = (int)($meta['chat_id'] ?? 0);
+        $date = (string)($meta['date'] ?? date('Y-m-d'));
 
+        $chunks = $this->chunkMessages($messages, $this->gapMinutes);
+        $summaries = [];
+        foreach ($chunks as $i => $chunk) {
+            $summaries[] = $this->summarizeChunkMessages($chunk, $date, $chatId, $i + 1);
+        }
+
+        // Reduce
+        $client = $this->client();
+        $system = PromptLoader::system('final_reducer_v5');
+        $payload = [
+            'chat_id' => $chatId,
+            'date' => $date,
+            'timezone' => $this->timezone,
+            'chunks' => $summaries,
+            'limits' => ['list_max' => 7, 'quote_max_words' => 12],
+        ];
+        $client->setTemperature(0.1)
+            ->setResponseFormat('json_object')
+            ->query($system, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
+            ->query(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+        $raw = $this->runWithRetries($client);
+        $merged = json_decode($this->ensureJsonOrThrow($this->extractContent($raw)), true) ?: [];
+        JsonShape::assertChunkSummary($merged);
+
+        // Executive
+        $system2 = PromptLoader::system('executive_report_v6');
+        $payload2 = [
+            'chat_id' => $chatId,
+            'date' => $date,
+            'timezone' => $this->timezone,
+            'merged' => $merged,
+            'limits' => ['list_max' => 7, 'quote_max_words' => 12],
+        ];
+        $client2 = $this->client();
+        $client2->setTemperature(0.1)
+            ->setResponseFormat('json_object')
+            ->query($system2, 'system')
+            ->query($this->jsonGuardInstruction('ru'), 'user')
+            ->query(json_encode($payload2, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'user');
+        $raw2 = $this->runWithRetries($client2);
+        $content2 = $this->ensureJsonOrThrow($this->extractContent($raw2));
+        return trim($content2);
+    }
+
+    // -------------------- PUBLIC: TOPIC (RU, short) --------------------
     public function summarizeTopic(string $transcript, string $chatTitle = '', int $chatId = 0): string
     {
         $client = $this->client();
-        $system = PromptLoader::system('topic_summary_v2');
+        $system = PromptLoader::system('topic_summary_v3');
         $payload = [
             'transcript' => $transcript,
             'chat_title' => $chatTitle,
@@ -255,18 +333,16 @@ class DeepseekService
 
         $raw = $this->runWithRetries($client);
         $out = trim($this->extractContent($raw));
-        // Make it Telegram-safe & concise
         $out = preg_replace('/\s+/', ' ', $out ?? '') ?? '';
         $out = rtrim((string)$out, " .。!！?？;；");
         return TextUtils::escapeMarkdown($out);
     }
 
     // -------------------- PUBLIC: DIGEST (executive JSON) --------------------
-
     public function summarizeReports(array $reports, string $date): string
     {
         $client = $this->client();
-        $system = PromptLoader::system('digest_executive_v4');
+        $system = PromptLoader::system('digest_executive_v6');
         $payload = [
             'date' => $date,
             'chat_summaries' => $reports,
@@ -286,13 +362,11 @@ class DeepseekService
 
     // -------------------- PUBLIC: MOOD (RU) --------------------
 
-    /**
-     * Returns one of: "позитивный" | "нейтральный" | "негативный".
-     */
+    /** Returns one of: "позитивный" | "нейтральный" | "негативный". */
     public function inferMood(string $transcript): string
     {
         $client = $this->client();
-        $system = PromptLoader::system('mood_v2');
+        $system = PromptLoader::system('mood_v3');
         $payload = ['transcript' => $transcript];
 
         $client
@@ -321,17 +395,15 @@ class DeepseekService
     }
 
     // -------------------- JSON helpers --------------------
-
     /** Короткая гарда для json_object: должна содержать слово 'json' в user-промпте */
     private function jsonGuardInstruction(string $locale = 'ru'): string
     {
-        // Короткая, чтобы не тратить токены. Содержит 'json' в нижнем регистре.
         return $locale === 'ru'
             ? 'Ответь только валидным json-объектом. Без текста вокруг, без Markdown, без ```.'
             : 'Reply with valid json object only. No extra text, no Markdown, no ```.';
     }
 
-    /** Если DeepSeek вернул служебную ошибку — бросаем исключение, чтобы верхний слой не слал ее в Telegram */
+    /** Если DeepSeek вернул служебную ошибку — бросаем исключение */
     private function ensureJsonOrThrow(string $content): string
     {
         $hay = mb_strtolower($content);
@@ -341,6 +413,7 @@ class DeepseekService
         }
         return $content;
     }
+
     private function decodeJson(string $content): ?array
     {
         $json = json_decode($content, true);
@@ -355,5 +428,4 @@ class DeepseekService
         }
         return null;
     }
-
 }

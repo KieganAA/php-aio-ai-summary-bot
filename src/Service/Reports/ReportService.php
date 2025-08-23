@@ -63,7 +63,8 @@ class ReportService
         $signals = HealthSignalService::analyze($msgs, $now);
 
         try {
-            $summary = $this->generator->summarize($transcript, [
+            // Prefer structure-aware path with raw messages
+            $summary = $this->generator->summarizeWithMessages($msgs, [
                 'chat_title' => $chatTitle,
                 'chat_id'    => $chatId,
                 'date'       => date('Y-m-d', $now),
@@ -140,7 +141,7 @@ class ReportService
             $reportText = $this->formatExecutiveReport($summary) . $note;
         }
 
-        $this->telegram->sendMessage($this->summaryChatId, $reportText, 'MarkdownV2');
+        $this->sendTelegramChunked($this->summaryChatId, $reportText, 'MarkdownV2');
         if ($this->slack !== null) {
             $this->slack->sendMessage(strip_tags($reportText));
         }
@@ -152,10 +153,6 @@ class ReportService
         $this->repo->markProcessed($chatId, $now);
     }
 
-    /**
-     * Convert a JSON report or digest into a Markdown formatted text suitable for Telegram.
-     * Scalars as key-values, arrays as bullet lists. All values escaped for MarkdownV2.
-     */
     private function formatJsonMessage(string $json, bool $stripMeta = false): string
     {
         $data = json_decode($json, true);
@@ -211,22 +208,17 @@ class ReportService
     {
         $data = json_decode($json, true);
         if (!is_array($data)) {
-            // Фолбэк: на всякий случай распарсим как общий JSON → Markdown
             return $this->formatJsonMessage($json);
         }
 
-        // Если это уже агрегированная сводка (а не список саммари по чатам),
-        // отрисуем через общий форматер (он красивый для таких кейсов).
         if (isset($data['overall_status']) || isset($data['warnings']) || isset($data['critical_chats'])) {
             return $this->formatJsonMessage($json);
         }
 
-        // Поддержка старого формата: {"date": "...", "chat_summaries": [ {...}, "...json..." ]}
         if (isset($data['chat_summaries']) && is_array($data['chat_summaries'])) {
             $lines = [];
 
             foreach ($data['chat_summaries'] as $item) {
-                // Если пришла строка — попробуем распарсить
                 if (is_string($item)) {
                     $decoded = json_decode($item, true);
                     if (is_array($decoded)) {
@@ -235,7 +227,6 @@ class ReportService
                 }
 
                 if (!is_array($item)) {
-                    // Совсем непредвидимый элемент — выводим как есть (экранируем)
                     $lines[] = '• ' . TextUtils::escapeMarkdown((string)$item);
                     $lines[] = '';
                     continue;
@@ -265,7 +256,6 @@ class ReportService
 
                 $lines[] = $header;
 
-                // Короткие секции по топ-3 пункта
                 $sections = [
                     'critical_chats' => 'Критично',
                     'warnings' => 'Предупреждения',
@@ -293,20 +283,17 @@ class ReportService
                     }
                 }
 
-                $lines[] = ''; // пустая строка между чатами
+                $lines[] = '';
             }
 
-            // Уберём возможные завершающие пустые строки
             while (!empty($lines) && trim(end($lines)) === '') {
                 array_pop($lines);
             }
             return implode("\n", $lines);
         }
 
-        // Непредвиденная форма — общий форматер нас выручит
         return $this->formatJsonMessage($json);
     }
-
 
     public function runDigest(int $now): void
     {
@@ -339,9 +326,6 @@ class ReportService
                 $title = 'Отчёт ' . date('Y-m-d', $now) . ' #' . $chatId;
                 $this->notion->addReport($title, $this->toPlainText($summary));
             }
-
-            // NOTE: Do NOT mark processed in digest to avoid double processing.
-            // Daily per-chat report handles markProcessed().
         }
 
         if (empty($reports)) {
@@ -365,8 +349,6 @@ class ReportService
         }
         $this->logger->info('Daily digest sent');
     }
-
-    // ---------- helpers ----------
 
     private function renderChatTitle(int $chatId, string $chatTitle): string
     {
@@ -400,7 +382,6 @@ class ReportService
 
         $flush = function () use (&$buffer, $chatId, $parseMode) {
             if ($buffer === '') return;
-            // Telegram rejects empty/too short code blocks etc., keep it simple
             $this->telegram->sendMessage($chatId, rtrim($buffer), $parseMode);
             $buffer = '';
         };

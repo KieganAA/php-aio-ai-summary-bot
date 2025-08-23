@@ -1,4 +1,5 @@
 <?php
+// src/Entity/Message.php
 declare(strict_types=1);
 
 namespace Src\Entity;
@@ -15,6 +16,7 @@ class Message
         public string $fromUser,
         public int $messageDate,
         public string $text,
-        public ?string $attachments = null
+        public ?string $attachments = null,
+        public ?int    $replyTo = null // NEW
     ) {}
 }

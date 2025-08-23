@@ -5,7 +5,9 @@ namespace Src\Service\Reports\Generators;
 
 use RuntimeException;
 use Src\Service\Integrations\DeepseekService;
+use Src\Util\TextUtils;
 use Throwable;
+
 class ExecutiveReportGenerator
 {
     private const REQUIRED_KEYS = [
@@ -25,7 +27,6 @@ class ExecutiveReportGenerator
             'audience' => 'executive',
         ];
 
-        // 1) Ask LLM for strict JSON (RU values, EN keys)
         try {
             $json = $this->deepseek->executiveReport($transcript, $meta);
             $data = $this->decodeSafe($json);
@@ -35,7 +36,6 @@ class ExecutiveReportGenerator
             $data = $this->coerceShape($data, $meta, $transcript);
             return json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         } catch (Throwable) {
-            // 2) Fallback: minimal JSON from heuristics + RU mood via LLM
             $status = $this->deriveStatus($transcript);
             $mood = $this->safeInferMood($transcript);
 
@@ -54,6 +54,22 @@ class ExecutiveReportGenerator
         }
     }
 
+    /** NEW: preferred structure-aware path */
+    public function summarizeWithMessages(array $messages, array $meta): string
+    {
+        try {
+            $json = $this->deepseek->executiveFromMessages($messages, $meta);
+            $data = $this->decodeSafe($json);
+            if ($data === null) {
+                throw new RuntimeException('Invalid JSON from LLM');
+            }
+            return json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        } catch (Throwable) {
+            $transcript = TextUtils::buildCleanTranscript($messages);
+            return $this->summarize($transcript, $meta);
+        }
+    }
+
     // ---------- helpers ----------
 
     private function decodeSafe(string $json): ?array
@@ -62,7 +78,6 @@ class ExecutiveReportGenerator
         if (is_array($data)) {
             return $data;
         }
-        // Try to salvage: extract first {...}
         if (preg_match('/\{.*\}/su', $json, $m)) {
             $data = json_decode($m[0], true);
             if (is_array($data)) {
@@ -74,7 +89,6 @@ class ExecutiveReportGenerator
 
     private function coerceShape(array $data, array $meta, string $transcript): array
     {
-        // Ensure required keys exist, coerce types, clamp fields
         $data += [
             'chat_id' => $meta['chat_id'] ?? 0,
             'date' => $meta['date'] ?? date('Y-m-d'),

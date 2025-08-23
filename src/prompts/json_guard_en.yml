@@ -1,0 +1,7 @@
+# prompts/json_guard_en.yml
+key: json_guard_en
+role: user
+lang: en
+name: JsonGuard-EN
+content: |-
+  Reply with a valid json object only. No extra text, no Markdown, no ```.

@@ -1,10 +1,13 @@
 <?php
+// src/Repository/DbalMessageRepository.php
 declare(strict_types=1);
 
 namespace Src\Repository;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Psr\Log\LoggerInterface;
+use Throwable;
 
 class DbalMessageRepository implements MessageRepositoryInterface
 {
@@ -19,31 +22,49 @@ class DbalMessageRepository implements MessageRepositoryInterface
     {
         $this->conn->beginTransaction();
         try {
+            // Upsert chat title
             try {
                 $this->conn->insert('chats', [
                     'id'    => $chatId,
                     'title' => $message['chat_title'] ?? null,
                 ]);
-            } catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException $e) {
+            } catch (UniqueConstraintViolationException $e) {
                 $this->conn->update('chats', ['title' => $message['chat_title'] ?? null], ['id' => $chatId]);
             }
 
+            // Extract reply_to (support several Telegram payload shapes)
+            $replyTo = null;
+            if (isset($message['reply_to']['message_id'])) {
+                $replyTo = (int)$message['reply_to']['message_id'];
+            } elseif (isset($message['reply_to_message']['message_id'])) {
+                $replyTo = (int)$message['reply_to_message']['message_id'];
+            } elseif (isset($message['reply_to_message_id'])) {
+                $replyTo = (int)$message['reply_to_message_id'];
+            }
+
+            // Insert message
             try {
                 $this->conn->insert('messages', [
-                    'chat_id'    => $chatId,
-                    'message_id' => $message['message_id'],
-                    'from_user'  => $message['from']['username'] ?? '',
-                    'message_date' => $message['date'],
-                    'text'       => $message['text'] ?? '',
-                    'attachments'=> $message['attachments'] ?? null,
-                    'processed'  => 0,
+                    'chat_id' => $chatId,
+                    'message_id' => (int)$message['message_id'],
+                    'reply_to' => $replyTo,
+                    'from_user' => (string)($message['from']['username'] ?? ''),
+                    'message_date' => (int)$message['date'],
+                    'text' => (string)($message['text'] ?? ''),
+                    'attachments' => $message['attachments'] ?? null,
+                    'processed' => 0,
                 ]);
-            } catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException $e) {
-                // ignore duplicates
+            } catch (UniqueConstraintViolationException $e) {
+                // Ignore duplicates (uq_chat_message)
             }
+
             $this->conn->commit();
-            $this->logger->info('Stored message', ['chat_id' => $chatId, 'message_id' => $message['message_id']]);
-        } catch (\Throwable $e) {
+            $this->logger->info('Stored message', [
+                'chat_id' => $chatId,
+                'message_id' => $message['message_id'],
+                'reply_to' => $replyTo,
+            ]);
+        } catch (Throwable $e) {
             $this->conn->rollBack();
             $this->logger->error('Failed to store message', ['error' => $e->getMessage()]);
             throw $e;
@@ -54,7 +75,9 @@ class DbalMessageRepository implements MessageRepositoryInterface
     {
         $start = strtotime('midnight', $dayTs);
         $end = $start + 86400 - 1;
-        $sql = 'SELECT DISTINCT chat_id FROM messages WHERE processed = 0 AND message_date BETWEEN :start AND :end';
+        $sql = 'SELECT DISTINCT chat_id
+                  FROM messages
+                  WHERE processed = 0 AND message_date BETWEEN :start AND :end';
         $rows = $this->conn->fetchAllAssociative($sql, ['start' => $start, 'end' => $end]);
         $chats = array_column($rows, 'chat_id');
         $this->logger->info('Active chats fetched', ['count' => count($chats)]);
@@ -65,7 +88,10 @@ class DbalMessageRepository implements MessageRepositoryInterface
     {
         $start = strtotime('midnight', $dayTs);
         $end = $start + 86400 - 1;
-        $sql = 'SELECT from_user, message_date, text FROM messages WHERE chat_id = :chat AND processed = 0 AND message_date BETWEEN :start AND :end ORDER BY message_date';
+        $sql = 'SELECT message_id, reply_to, from_user, message_date, text
+                  FROM messages
+                  WHERE chat_id = :chat AND processed = 0 AND message_date BETWEEN :start AND :end
+                  ORDER BY message_date, message_id';
         $rows = $this->conn->fetchAllAssociative($sql, ['chat' => $chatId, 'start' => $start, 'end' => $end]);
         $this->logger->info('Messages fetched', ['chat_id' => $chatId, 'count' => count($rows)]);
         return $rows;
@@ -75,7 +101,10 @@ class DbalMessageRepository implements MessageRepositoryInterface
     {
         $start = strtotime('midnight', $dayTs);
         $end = $start + 86400 - 1;
-        $sql = 'SELECT from_user, message_date, text FROM messages WHERE chat_id = :chat AND message_date BETWEEN :start AND :end ORDER BY message_date';
+        $sql = 'SELECT message_id, reply_to, from_user, message_date, text
+                  FROM messages
+                  WHERE chat_id = :chat AND message_date BETWEEN :start AND :end
+                  ORDER BY message_date, message_id';
         $rows = $this->conn->fetchAllAssociative($sql, ['chat' => $chatId, 'start' => $start, 'end' => $end]);
         $this->logger->info('All messages fetched', ['chat_id' => $chatId, 'count' => count($rows)]);
         return $rows;
@@ -85,7 +114,9 @@ class DbalMessageRepository implements MessageRepositoryInterface
     {
         $start = strtotime('midnight', $dayTs);
         $end = $start + 86400 - 1;
-        $sql = 'UPDATE messages SET processed = 1 WHERE chat_id = :chat AND processed = 0 AND message_date BETWEEN :start AND :end';
+        $sql = 'UPDATE messages
+                  SET processed = 1
+                  WHERE chat_id = :chat AND processed = 0 AND message_date BETWEEN :start AND :end';
         $this->conn->executeStatement($sql, ['chat' => $chatId, 'start' => $start, 'end' => $end]);
         $this->logger->info('Messages marked processed', ['chat_id' => $chatId]);
     }
@@ -110,7 +141,6 @@ class DbalMessageRepository implements MessageRepositoryInterface
             $this->titleCache[$chatId] = $row['title'] ?? '';
             $this->logger->info('Chat title fetched', ['chat_id' => $chatId]);
         }
-
         return $this->titleCache[$chatId];
     }
 }

@@ -1,0 +1,7 @@
+# prompts/json_guard_ru.yml
+key: json_guard_ru
+role: user
+lang: ru
+name: JsonGuard-RU
+content: |-
+  Ответь только валидным json-объектом. Без текста вокруг, без Markdown, без ```.

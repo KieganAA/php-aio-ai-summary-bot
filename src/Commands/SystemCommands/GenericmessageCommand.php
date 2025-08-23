@@ -1,4 +1,5 @@
 <?php
+// src/Commands/SystemCommands/GenericmessageCommand.php
 declare(strict_types=1);
 
 namespace Src\Commands\SystemCommands;
@@ -16,7 +17,8 @@ class GenericmessageCommand extends SystemCommand
 {
     protected $name = 'genericmessage';
     protected $description = 'Handles every incoming message';
-    protected $version = '1.0.0';
+    protected $version = '1.1.0';
+
     private LoggerInterface $logger;
 
     public function __construct(...$args)
@@ -31,7 +33,9 @@ class GenericmessageCommand extends SystemCommand
 
         $conn = Database::getConnection($this->logger);
         $repo   = new DbalMessageRepository($conn, $this->logger);
-        $logger = new MessageLogger($repo, $this->logger);
+
+        // Разрешённые чаты по заголовку: скорректируйте при необходимости
+        $logger = new MessageLogger($repo, $this->logger, '/AIO/i');
         $logger->handleUpdate($update);
 
         return Request::emptyResponse();

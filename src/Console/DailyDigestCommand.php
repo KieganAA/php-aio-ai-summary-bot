@@ -28,6 +28,7 @@ class DailyDigestCommand extends Command
         $this->logger->info('Daily digest command started');
         $this->report->runDigest(time());
         $this->logger->info('Daily digest command finished');
+
         return Command::SUCCESS;
     }
 }
