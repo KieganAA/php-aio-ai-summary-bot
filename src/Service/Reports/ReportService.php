@@ -17,8 +17,8 @@ use Throwable;
 
 class ReportService
 {
-    private const TG_MAX = 4096;   // Telegram hard limit
-    private const TG_BUDGET = 3900; // leave room for safety/escapes
+    private const TG_MAX = 4096;
+    private const TG_BUDGET = 3900;
 
     private LoggerInterface $logger;
     private TelegramRenderer $renderer;
@@ -31,125 +31,113 @@ class ReportService
         private int                        $summaryChatId,
         private ?SlackService              $slack = null,
         private ?NotionService             $notion = null,
-        ?ExecutiveReportGenerator         $generator = null,
+        ?ExecutiveReportGenerator $generator = null,
     ) {
         $this->logger = LoggerService::getLogger();
         $this->renderer = new TelegramRenderer();
         $this->generator = $generator ?? new ExecutiveReportGenerator($this->deepseek);
     }
 
-    private function generateSummary(int $chatId, int $now): ?array
+    /** Никогда не возвращает null: всегда есть JSON под новую схему */
+    private function generateSummary(int $chatId, int $now): array
     {
         $msgs = $this->repo->getMessagesForChat($chatId, $now);
+        $chatTitle = (string)($this->repo->getChatTitle($chatId) ?? '');
+
         if (empty($msgs)) {
-            return null;
+            $empty = [
+                'chat_id' => $chatId,
+                'date' => date('Y-m-d', $now),
+                'verdict' => 'ok',
+                'health_score' => 0,
+                'client_mood' => 'нейтральный',
+                'summary' => 'Сообщений за день не найдено.',
+                'incidents' => [],
+                'warnings' => [],
+                'decisions' => [],
+                'open_questions' => [],
+                'sla' => ['breaches' => [], 'at_risk' => []],
+                'timeline' => [],
+                'notable_quotes' => [],
+                'quality_flags' => ['no_messages'],
+                'trimming_report' => [],
+                'char_counts' => ['total' => 0],
+                'tokens_estimate' => 0,
+            ];
+            return [
+                'summary' => json_encode($empty, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+                'messages' => [],
+                'title' => $chatTitle,
+                'stats' => ['msg_count' => 0, 'user_count' => 0, 'top_users' => []],
+            ];
         }
 
-        $transcript = TextUtils::buildCleanTranscript($msgs);
-
         $msgCount = count($msgs);
-        $users = array_values(array_filter(array_map(
-            static fn($m) => (string)($m['from_user'] ?? ''),
-            $msgs
-        ), static fn($u) => $u !== ''));
-
+        $users = array_values(array_filter(array_map(static fn($m) => (string)($m['from_user'] ?? ''), $msgs)));
         $userCount = count(array_unique($users));
         $topUsersCounted = array_count_values($users);
         arsort($topUsersCounted);
         $topUsers = array_slice(array_keys($topUsersCounted), 0, 3);
 
-        $chatTitle = (string)($this->repo->getChatTitle($chatId) ?? '');
-
-        $signals = HealthSignalService::analyze($msgs, $now);
-
         try {
-            // Prefer structure-aware path with raw messages
             $summary = $this->generator->summarizeWithMessages($msgs, [
                 'chat_title' => $chatTitle,
                 'chat_id'    => $chatId,
                 'date'       => date('Y-m-d', $now),
                 'lang'       => 'ru',
                 'audience'   => 'executive',
-                'signals'    => $signals,
             ]);
         } catch (Throwable $e) {
-            $this->logger->error('Failed to generate summary', [
-                'chat_id' => $chatId,
-                'error'   => $e->getMessage(),
-            ]);
-            return null;
+            // Из-за LLM-repair сюда фактически не попадём. На всякий случай — пустой каркас.
+            $this->logger->error('Summary hard fail', ['chat_id' => $chatId, 'error' => $e->getMessage()]);
+            $summary = json_encode([
+                'chat_id' => $chatId, 'date' => date('Y-m-d', $now), 'verdict' => 'ok', 'health_score' => 0,
+                'client_mood' => 'нейтральный', 'summary' => 'Данные недоступны.',
+                'incidents' => [], 'warnings' => [], 'decisions' => [], 'open_questions' => [],
+                'sla' => ['breaches' => [], 'at_risk' => []], 'timeline' => [], 'notable_quotes' => [],
+                'quality_flags' => ['summary_hard_fail'], 'trimming_report' => [], 'char_counts' => ['total' => 0], 'tokens_estimate' => 0
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
         }
 
         return [
             'summary' => $summary,
             'messages' => $msgs,
             'title'    => $chatTitle,
-            'stats'    => [
-                'msg_count'  => $msgCount,
-                'user_count' => $userCount,
-                'top_users'  => $topUsers,
-            ],
-            'signals' => $signals,
+            'stats' => ['msg_count' => $msgCount, 'user_count' => $userCount, 'top_users' => $topUsers],
         ];
-    }
-
-    public function runDailyReports(int $now): void
-    {
-        $this->logger->info('Running daily reports', [
-            'day' => date('Y-m-d', $now),
-        ]);
-
-        foreach ($this->repo->listActiveChats($now) as $chatId) {
-            $this->runReportForChat($chatId, $now);
-        }
     }
 
     public function runReportForChat(int $chatId, int $now): void
     {
         $data = $this->generateSummary($chatId, $now);
-        if ($data === null) {
-            return;
-        }
 
         $summary = $data['summary'];
-        $msgs      = $data['messages'];
+        $msgs = $data['messages'];
         $chatTitle = $data['title'];
-        $stats     = $data['stats'];
 
         $note = '';
-        $lastMsgTs = $msgs[count($msgs) - 1]['message_date'];
-        if ($now - $lastMsgTs < 3600) {
-            $recent = array_slice($msgs, -5);
-            $recentTranscript = TextUtils::buildCleanTranscript($recent);
-            try {
-                $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
-                $topic = TextUtils::escapeMarkdown($topic);
-                $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";
-            } catch (Throwable $e) {
-                $this->logger->error('Failed to summarise active conversation', [
-                    'chat_id' => $chatId,
-                    'error'   => $e->getMessage(),
-                ]);
-                $note = "\n\n⚠️ Активное обсуждение";
+        if (!empty($msgs)) {
+            $lastMsgTs = (int)($msgs[count($msgs) - 1]['message_date'] ?? 0);
+            if ($now - $lastMsgTs < 3600) {
+                $recent = array_slice($msgs, -5);
+                $recentTranscript = TextUtils::buildCleanTranscript($recent);
+                try {
+                    $topic = $this->deepseek->summarizeTopic($recentTranscript, $chatTitle, $chatId);
+                    $topic = TextUtils::escapeMarkdown($topic);
+                    $note = "\n\n⚠️ Сейчас обсуждают: {$topic}";
+                } catch (Throwable $e) {
+                    $note = "\n\n⚠️ Активное обсуждение";
+                }
             }
         }
 
-        $arr = $this->decodeJsonToArray($summary);
-        if (is_array($arr)) {
-            $reportText = $this->renderer->renderExecutiveChat($arr, $chatTitle) . $note;
-        } else {
-            $reportText = $this->formatExecutiveReport($summary) . $note;
-        }
+        $arr = json_decode($summary, true) ?: [];
+        $reportText = $this->renderer->renderExecutiveChat($arr, $chatTitle) . $note;
 
         $this->sendTelegramChunked($this->summaryChatId, $reportText, 'MarkdownV2');
-        if ($this->slack !== null) {
-            $this->slack->sendMessage(strip_tags($reportText));
-        }
-        if ($this->notion !== null) {
-            $title = 'Report ' . date('Y-m-d', $now) . ' #' . $chatId;
-            $this->notion->addReport($title, strip_tags($summary));
-        }
-        $this->logger->info('Daily report sent', ['chat_id' => $chatId]);
+        if ($this->slack !== null) $this->slack->sendMessage(strip_tags($reportText));
+        if ($this->notion !== null) $this->notion->addReport('Report ' . date('Y-m-d', $now) . ' #' . $chatId, strip_tags($summary));
+
         $this->repo->markProcessed($chatId, $now);
     }
 

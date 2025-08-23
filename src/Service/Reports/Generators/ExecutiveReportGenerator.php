@@ -11,22 +11,15 @@ class ExecutiveReportGenerator
     {
     }
 
-    /**
-     * НЕ используется по умолчанию, оставлено на случай прямой подачи текста.
-     * Строгая схема, без фоллбеков — ошибки пробрасываются наверх.
-     */
-    public function summarize(string $transcript, array $meta): string
-    {
-        $meta += ['lang' => 'ru', 'audience' => 'executive'];
-        return $this->deepseek->executiveReport($transcript, $meta);
-    }
-
-    /**
-     * Основной путь: messages -> struct-chunks -> reducer -> executive.
-     * Строгая схема, без фоллбеков — ошибки пробрасываются наверх.
-     */
+    /** Основной путь — с массивом сообщений */
     public function summarizeWithMessages(array $messages, array $meta): string
     {
         return $this->deepseek->executiveFromMessages($messages, $meta);
+    }
+
+    /** Текстовый путь — редкий случай, сводим к messages для единого конвейера */
+    public function summarize(string $transcript, array $meta): string
+    {
+        return $this->deepseek->executiveReport($transcript, $meta);
     }
 }
