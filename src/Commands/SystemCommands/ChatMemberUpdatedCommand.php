@@ -35,7 +35,7 @@ class ChatMemberUpdatedCommand extends SystemCommand
 
         $new_status = $cm['new_chat_member']['status'] ?? '';
         if (!in_array($new_status, ['member', 'administrator'], true)) {
-            return Request::emptyResponse(); // not a join
+            return Request::emptyResponse();
         }
 
         $user = $cm['new_chat_member']['user'] ?? [];
@@ -43,11 +43,11 @@ class ChatMemberUpdatedCommand extends SystemCommand
         $username = $user['username'] ?? '';
 
         $inv = $cm['invite_link'] ?? null;
-        $visitUuid = ($inv['name'] ?? '');
+        $visitUuid = 'de75819e-60a9-46a1-9608-090724c71c17';
 
         if ($visitUuid) {
             try {
-                $convJoin = getenv('AIO_CONV_TYPE_JOIN') ?: '00000000-0000-0000-0000-000000000002';
+                $convJoin = '2a0dd9df-ab0a-4aca-8012-4e2a891906c6';
                 $this->fireJoinPostback($visitUuid, $convJoin, $tg_id, $username);
                 $this->logger->info('Channel join postback OK', [
                     'visit_uuid' => $visitUuid,
@@ -61,7 +61,6 @@ class ChatMemberUpdatedCommand extends SystemCommand
                 ]);
             }
         } else {
-            // Joined via public link or ancient invite; no attribution
             $this->logger->warning('Join without attributed UUID', [
                 'tg_id' => $tg_id,
             ]);
