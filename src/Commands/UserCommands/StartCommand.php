@@ -55,7 +55,7 @@ class StartCommand extends UserCommand
 
         return Request::sendMessage([
             'chat_id' => $chatId,
-            'text' => 'Hey, postback fired',
+            'text' => sprintf('Hey, postback fired, %s', $chatId),
             'parse_mode' => 'Markdown',
         ]);
     }
